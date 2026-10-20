@@ -79,7 +79,7 @@ jobs:
           if (-not $installer) { throw "Setup.exe was not produced" }
           $testDir = Join-Path $env:LOCALAPPDATA "Programs\MouseWithOutBorders-InstallerCI"
           $install = Start-Process -FilePath $installer.FullName -ArgumentList @(
-            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', "/DIR=\""$testDir\"""
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $testDir + '"')
           ) -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Setup exited $($install.ExitCode)" }
           $app = Join-Path $testDir "MouseWithOutBorders.exe"
