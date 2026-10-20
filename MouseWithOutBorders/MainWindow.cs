@@ -354,13 +354,21 @@ internal sealed class MainWindow : Form
                 if (!connectedOnce)
                 {
                     string message = "Could not connect: " + ex.Message;
+                    if (!_settings.AutoConnect)
+                    {
+                        Ui(() =>
+                        {
+                            if (_runCts != lifetime) return;
+                            Stop();
+                            SetStatus(message);
+                        });
+                        break;
+                    }
                     Ui(() =>
                     {
-                        if (_runCts != lifetime) return;
-                        Stop();
-                        SetStatus(message);
+                        if (_runCts == lifetime)
+                            SetStatus("Receiver not ready. Retrying connection...");
                     });
-                    break;
                 }
             }
             finally
