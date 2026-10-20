@@ -1,39 +1,67 @@
 # Mouse, with out borders
 
-A small Windows application to use **one mouse across two Windows PCs** on the same local network.
+**One mouse, two Windows computers.** A small app that makes the physical mouse plugged into one PC cross onto another PC on the same local network. Only mouse movement, buttons and wheel are shared.
 
-The mouse remains physically connected to the controller PC. Moving past the right edge of the controller's primary screen sends the pointer to the left edge of the other PC. Moving back past the other PC's left edge returns it. Mouse buttons and wheel follow the pointer. **No keyboard sharing, clipboard sharing, or other remote-control features.**
+- Switch by pushing through the **left or right edge** of the first PC's Windows desktop.
+- Return by pushing across the opposite edge of the second PC.
+- No keyboard, clipboard, files, remote desktop or account required.
+- Per-user Windows installer and uninstaller; also available as a portable executable.
+- Tray icon, option to launch with Windows, option to connect automatically, saved device pairing.
+- Authenticated connection with heartbeat detection and automatic reconnection after an established connection drops.
 
-## Quick start
+**Project status: preview.** Windows compilation is automated; real two-PC interaction still needs hardware testing. This is not a production/stability guarantee.
 
-1. Download the Windows build from GitHub Actions or build with `dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true`.
-2. Run the app on **both Windows PCs**, connected to the same trusted LAN.
-3. On the second PC select **Receive mouse**, click **Start**, and note its LAN IP and pairing key.
-4. On the PC with the mouse select **Control mouse**, enter the other PC's IP and pairing key, and click **Connect**.
-5. Move the mouse through the **right edge** of the controller's primary screen. Return through the **left edge** of the other PC.
+## Install on both PCs
 
-Both PCs must run the program in an interactive Windows session. Allow the application through Windows Firewall on **private networks** if prompted. The default TCP port is **42187**. Keep the port closed to the internet. If the receiver is blocked by Windows Firewall, run this on the **receiving PC** in an elevated PowerShell (change the exe path to where you put it):
+1. Download MouseWithOutBorders-0.1.0-Setup.exe from the [latest Release](https://github.com/aesgalexis/mouse-with-out-borders/releases) once a release is published, or download the MouseWithOutBorders-Windows-x64 artifact from [Actions](https://github.com/aesgalexis/mouse-with-out-borders/actions).
+2. Run the setup on **both Windows 10/11 x64 PCs**. No administrator rights are needed to install for the current user.
+3. On the PC you want to **receive** the mouse, select **Receive mouse**, then **Start receiving**. Copy the displayed LAN IP and pairing key.
+4. On the PC with your physical mouse, choose **Control mouse**, enter the receiver IP and pairing key, and select which edge leads to the second PC. Click **Connect mouse**.
+5. Push your physical mouse off that edge. The pointer now moves, clicks and scrolls on the second PC. Push through its opposite edge to come back.
 
-```powershell
-New-NetFirewallRule -DisplayName "Mouse With Out Borders" -Direction Inbound -Action Allow -Profile Private -Protocol TCP -LocalPort 42187 -Program "C:\\Path\\To\\MouseWithOutBorders.exe"
-```
+The pairing key is generated once per user and saved in the settings file under %LOCALAPPDATA%\MouseWithOutBorders. It is **not** reset on every launch. Never publish a pairing key, diagnostic log or settings file.
 
-To stop either side, click **Disconnect / Stop**. A network failure releases the origin cursor after the heartbeat timeout (approximately five seconds).
+The app runs in the **notification area** by default when its window is closed. Use its tray menu's **Exit** to actually quit. You can turn off "Keep running..." in Settings. Check "Start with Windows" to launch the program when you sign in, and "Connect / listen automatically" to restore its previous role.
 
-## Scope and current limitations
+## Network and security
 
-- First version supports two PCs, with the receiver positioned to the **right** of the controller. Each PC uses its **primary monitor**.
-- Communication is authenticated with a randomly generated pairing key and message authentication codes; mouse activity is **not encrypted**. Use a trusted private network, never port-forward the listener.
-- Windows may prevent mouse injection into elevated apps, secure desktops, or UAC prompts; those contexts are not supported.
-- A connection loss releases the controller's cursor lock after a five-second heartbeat timeout.
-- This is an initial implementation. It still needs compilation/real-hardware testing on two Windows PCs before being called production-ready.
+Both PCs must be on the same **trusted private network** with TCP port **42187** reachable on the receiver.
 
-## Two-PC smoke test
+If Windows Firewall blocks the receiver, allow the application on **private** networks when prompted. To add a rule manually, run PowerShell as administrator on the receiving PC:
 
-1. Start the receiver on PC B and copy its pairing key.
-2. On PC A enter B's LAN IP and that key, then connect.
-3. Push the physical mouse through A's right edge; check that movement, left/right/middle clicks, and scrolling now work on B (and no mouse clicks occur on A).
-4. Move to the left edge of B and continue left; the mouse should return to A at approximately the same vertical position.
-5. Switch again, disconnect B, and confirm A releases its mouse within roughly five seconds. Also test a wrong pairing key (must fail).
+    New-NetFirewallRule -DisplayName "Mouse With Out Borders" -Direction Inbound -Action Allow -Profile Private -Protocol TCP -LocalPort 42187 -Program "$env:LOCALAPPDATA\Programs\MouseWithOutBorders\MouseWithOutBorders.exe"
 
-Only run on Windows 10/11. Admin/UAC screens and multi-monitor layouts are not yet supported by this initial build.
+The connection requires matching pairing keys, uses challenge-based HMAC authentication and verifies every packet. Mouse packets are **not encrypted**. Do **not** use this on public or hostile networks; never open or port-forward TCP 42187 to the internet. The listener binds to the local PC's network interfaces; use Windows Firewall to limit access.
+
+Settings are stored in the signed-in user's LocalAppData folder; Windows account security protects access to those files. No cloud service is used.
+
+## Supported / limits
+
+- Exactly **two PCs**, Windows 10/11 x64, with interactive user sessions.
+- Left/right screen arrangement; the outer edge is based on the Windows virtual desktop, so other monitors on a PC are taken into account. Complex non-rectangular display arrangements need additional testing.
+- Raw mouse deltas, wheel, primary and X buttons are supported.
+- Windows security boundaries (UAC prompts, locked/secure desktop, elevated applications) can restrict input injection.
+- Some mice, DPI settings, remote sessions, exclusive-input games, network policies and antivirus software may behave differently. Physical two-PC testing is still necessary.
+- The origin PC releases its cursor on disconnect or heartbeat timeout (normally within ~5 seconds).
+
+## Troubleshooting
+
+- **Cannot connect:** confirm both PCs are on the same LAN, the receiver IP is correct, and Windows Firewall allows TCP 42187 on a private network.
+- **Pairing rejected:** copy the complete 32-character key from the receiving PC again.
+- **Cursor does not cross:** make sure both apps report connected, and move through the *outer* edge selected on the controlling PC.
+- **App disappeared:** check the Windows notification area (system tray); double-click its icon to reopen.
+- **Diagnostics:** choose **Open diagnostic log**. Logs are under %LOCALAPPDATA%\MouseWithOutBorders and rotate at approximately 512 KB.
+
+## Development
+
+Requires **Windows**, .NET 8 SDK, and (to build the installer locally) [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+
+    dotnet build MouseWithOutBorders/MouseWithOutBorders.csproj -c Release
+    dotnet publish MouseWithOutBorders/MouseWithOutBorders.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist/app
+    & ([IO.Path]::Combine([Environment]::GetFolderPath('ProgramFilesX86'), 'Inno Setup 6', 'ISCC.exe')) installer\MouseWithOutBorders.iss
+
+The icon is generated automatically on Windows by the MSBuild project target. CI on windows-latest generates the icon, builds and publishes the portable ZIP and installable EXE as build artifacts. A Git tag such as v0.1.0 triggers publication of a GitHub Release.
+
+The app does not request elevation and installs in the current user's %LOCALAPPDATA%\Programs directory. Uninstall retains personal settings by design; these can be removed from LocalAppData manually.
+
+Source code is intentionally small and only targets mouse sharing. Unrelated sharing features are out of scope.
