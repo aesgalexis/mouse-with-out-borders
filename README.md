@@ -13,11 +13,15 @@
 
 ## Install on both PCs
 
-1. Download MouseWithOutBorders-0.1.0-Setup.exe from the [latest Release](https://github.com/aesgalexis/mouse-with-out-borders/releases) once a release is published, or download the MouseWithOutBorders-Windows-x64 artifact from [Actions](https://github.com/aesgalexis/mouse-with-out-borders/actions).
+1. Download MouseWithOutBorders-0.1.1-Setup.exe from the [latest Release](https://github.com/aesgalexis/mouse-with-out-borders/releases) once a release is published, or download the MouseWithOutBorders-Windows-x64 artifact from [Actions](https://github.com/aesgalexis/mouse-with-out-borders/actions).
 2. Run the setup on **both Windows 10/11 x64 PCs**. No administrator rights are needed to install for the current user.
 3. On the PC you want to **receive** the mouse, select **Receive mouse**, then **Start receiving**. Copy the displayed LAN IP and pairing key.
 4. On the PC with your physical mouse, choose **Control mouse**, enter the receiver IP and pairing key, and select which edge leads to the second PC. Click **Connect mouse**.
 5. Push your physical mouse off that edge. The pointer now moves, clicks and scrolls on the second PC. Push through its opposite edge to come back.
+
+For an assisted Windows installation or rollback, see [installation instructions](docs/INSTALLATION.md). For automated checks vs. pending two-PC tests, see [verification record](docs/TESTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+On the PC that will **receive the mouse**, you can run the checked-in `scripts/install.ps1 -Receiver` script after downloading it from the repo. On the controlling PC use `scripts/install.ps1` without the receiver switch. The script verifies the GitHub Release SHA-256 manifest and installs into the current Windows user's profile. It does not remotely control or install software on any other machine.
 
 The pairing key is generated once per user and saved in the settings file under %LOCALAPPDATA%\MouseWithOutBorders. It is **not** reset on every launch. Never publish a pairing key, diagnostic log or settings file.
 
@@ -60,8 +64,8 @@ Requires **Windows**, .NET 8 SDK, and (to build the installer locally) [Inno Set
     dotnet publish MouseWithOutBorders/MouseWithOutBorders.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist/app
     & ([IO.Path]::Combine([Environment]::GetFolderPath('ProgramFilesX86'), 'Inno Setup 6', 'ISCC.exe')) installer\MouseWithOutBorders.iss
 
-The icon is generated automatically on Windows by the MSBuild project target. CI on windows-latest generates the icon, builds and publishes the portable ZIP and installable EXE as build artifacts. A Git tag such as v0.1.0 triggers publication of a GitHub Release.
+The icon is generated automatically on Windows by the MSBuild project target. CI on windows-latest generates the icon, builds and publishes the portable ZIP and installable EXE as build artifacts. A Git tag such as v0.1.1 triggers publication of a GitHub Release.
 
-The app does not request elevation and installs in the current user's %LOCALAPPDATA%\Programs directory. Uninstall retains personal settings by design; these can be removed from LocalAppData manually.
+The assisted installer prompts for Windows admin approval only if `-Receiver` is selected to add a private-network firewall rule; the application itself does not request elevation and installs in the current user's %LOCALAPPDATA%\Programs directory. Uninstall retains personal settings by design; these can be removed from LocalAppData manually.
 
 Source code is intentionally small and only targets mouse sharing. Unrelated sharing features are out of scope.
