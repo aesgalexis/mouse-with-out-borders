@@ -51,7 +51,7 @@ internal sealed class MainWindow : Form
     {
         _launchedAtStartup = launchedAtStartup;
         Text = "Mouse, with out borders";
-        Icon = SystemIcons.Application;
+        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
         ClientSize = new Size(536, 734);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
