@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-if (-not $IsWindows -and $PSVersionTable.PSEdition -eq 'Core') {
+if ($PSVersionTable.PSEdition -eq 'Core' -and -not [System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([System.Runtime.InteropServices.OSPlatform]::Windows)) {
     throw 'Run this installer on Windows 10 or 11.'
 }
 if (-not [Environment]::Is64BitOperatingSystem) {
@@ -69,7 +69,7 @@ try {
         if (-not $existing) {
             $netshArgs = @(
                 'advfirewall', 'firewall', 'add', 'rule',
-                "name=$rule", 'dir=in', 'action=allow', 'profile=private',
+                'name="MouseWithOutBorders Private LAN Receiver"', 'dir=in', 'action=allow', 'profile=private',
                 'protocol=TCP', 'localport=42187', "program=$exe"
             )
             try {
