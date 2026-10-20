@@ -44,8 +44,8 @@ try {
     $setupPath = Join-Path $folder $assetName
     $sumPath = Join-Path $folder 'SHA256SUMS.txt'
     Write-Host 'Downloading release files...'
-    Invoke-WebRequest -Uri $setupAsset.browser_download_url -Headers $headers -OutFile $setupPath
-    Invoke-WebRequest -Uri $hashAsset.browser_download_url -Headers $headers -OutFile $sumPath
+    Invoke-WebRequest -UseBasicParsing -Uri $setupAsset.browser_download_url -Headers $headers -OutFile $setupPath
+    Invoke-WebRequest -UseBasicParsing -Uri $hashAsset.browser_download_url -Headers $headers -OutFile $sumPath
     $manifest = Get-Content -LiteralPath $sumPath
     $match = $manifest | Where-Object { $_ -match ('^[0-9a-fA-F]{64}\s+\*?' + [regex]::Escape($assetName) + '$') } | Select-Object -First 1
     if (-not $match) { throw "Installer not listed in release SHA-256 manifest." }
