@@ -43,3 +43,12 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\MouseWithOutBorders.exe"; Tas
 
 [Run]
 Filename: "{app}\MouseWithOutBorders.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+    RegDeleteValue(HKCU,
+      'Software\Microsoft\Windows\CurrentVersion\Run',
+      'MouseWithOutBorders');
+end;
