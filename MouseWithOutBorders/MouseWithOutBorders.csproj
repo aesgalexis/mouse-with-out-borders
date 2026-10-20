@@ -6,7 +6,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
     <AssemblyName>MouseWithOutBorders</AssemblyName>
     <RootNamespace>MouseWithOutBorders</RootNamespace>
   </PropertyGroup>
+  <Target Name="GenerateIcon" BeforeTargets="PrepareForBuild"
+          Condition="'$(OS)' == 'Windows_NT' and !Exists('$(MSBuildProjectDirectory)\assets\app.ico')">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\generate-icon.ps1&quot; &quot;$(MSBuildProjectDirectory)\assets\app.ico&quot;" />
+  </Target>
 </Project>
