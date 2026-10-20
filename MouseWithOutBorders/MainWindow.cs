@@ -62,9 +62,14 @@ internal sealed class MainWindow : Form
         _role.SelectedIndex = 0;
         _receiverKey.Text = MousePeer.NewKey();
 
-        string ips = string.Join(", ", Dns.GetHostAddresses(Dns.GetHostName())
-            .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
-            .Select(ip => ip.ToString()));
+        string ips;
+        try
+        {
+            ips = string.Join(", ", Dns.GetHostAddresses(Dns.GetHostName())
+                .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
+                .Select(ip => ip.ToString()));
+        }
+        catch (SocketException) { ips = ""; }
         _receiverIp.Text = "Local IPv4: " + (ips.Length == 0 ? "Check ipconfig" : ips) +
                            "\nListening port: " + MousePeer.Port;
         _status.Text = "Not connected.";
@@ -185,11 +190,12 @@ internal sealed class MainWindow : Form
 
     private async Task RunReceiverAsync(byte[] key, CancellationTokenSource lifetime)
     {
+        TcpListener listener = _listener!;
         try
         {
             while (!lifetime.IsCancellationRequested)
             {
-                TcpClient tcp = await _listener!.AcceptTcpClientAsync(lifetime.Token);
+                TcpClient tcp = await listener.AcceptTcpClientAsync(lifetime.Token);
                 MousePeer peer;
                 try
                 {
@@ -207,6 +213,7 @@ internal sealed class MainWindow : Form
 
                 using (peer)
                 {
+                    if (lifetime.IsCancellationRequested) break;
                     _peer = peer;
                     bool active = false;
                     Ui(() => SetStatus("Paired. Waiting for mouse to cross from the other PC."));
@@ -263,16 +270,22 @@ internal sealed class MainWindow : Form
                     finally
                     {
                         if (active) ReleaseButtons();
-                        _peer = null;
-                        Ui(() => SetStatus("Waiting for the mouse PC to reconnect..."));
+                        if (ReferenceEquals(_peer, peer)) _peer = null;
+                        Ui(() => { if (_runCts == lifetime) SetStatus("Waiting for the mouse PC to reconnect..."); });
                     }
                 }
             }
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception) when (lifetime.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            Ui(() => { Stop(); SetStatus("Receiver error: " + ex.Message); });
+            Ui(() =>
+            {
+                if (_runCts != lifetime) return;
+                Stop();
+                SetStatus("Receiver error: " + ex.Message);
+            });
         }
     }
 
