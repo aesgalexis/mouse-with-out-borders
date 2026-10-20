@@ -43,6 +43,7 @@ internal sealed class MousePeer : IDisposable
         _key = key;
         _nonce = nonce;
         _ = WriteLoopAsync();
+        _ = HeartbeatLoopAsync();
     }
 
     private static (StreamReader reader, StreamWriter writer) OpenStreams(TcpClient client)
@@ -152,12 +153,36 @@ internal sealed class MousePeer : IDisposable
         catch (SocketException) { Dispose(); }
     }
 
+    private async Task HeartbeatLoopAsync()
+    {
+        try
+        {
+            while (!_stopping.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), _stopping.Token);
+                Queue(new MousePacket("ping"));
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
     internal async Task ReadLoopAsync(Action<MousePacket> onPacket, CancellationToken ct)
     {
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _stopping.Token);
         while (!linked.IsCancellationRequested)
         {
-            string? line = await _reader.ReadLineAsync(linked.Token);
+            // Every connected peer emits a heartbeat each second. A dead or
+            // unplugged PC must not leave the origin's cursor locked forever.
+            using CancellationTokenSource deadline =
+                CancellationTokenSource.CreateLinkedTokenSource(linked.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(5));
+
+            string? line;
+            try { line = await _reader.ReadLineAsync(deadline.Token); }
+            catch (OperationCanceledException) when (!linked.IsCancellationRequested)
+            {
+                throw new IOException("Other PC stopped responding (heartbeat timeout).");
+            }
             if (line is null) throw new IOException("Other PC disconnected.");
             if (line.Length > 4096) throw new IOException("Oversized mouse message.");
 
@@ -169,7 +194,7 @@ internal sealed class MousePeer : IDisposable
             _received = seq;
             MousePacket? packet = JsonSerializer.Deserialize<MousePacket>(Convert.FromBase64String(parts[1]));
             if (packet is null) throw new IOException("Invalid mouse packet.");
-            onPacket(packet);
+            if (packet.Kind != "ping") onPacket(packet);
         }
     }
 
