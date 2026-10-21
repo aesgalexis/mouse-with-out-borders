@@ -71,7 +71,7 @@ internal static class NativeMouse
     // INPUT contains a union. Its natural alignment makes the union start at
     // offset 8 on x64 and offset 4 on x86.
     [StructLayout(LayoutKind.Sequential)]
-    private struct MouseInput
+    internal struct MouseInput
     {
         public int Dx, Dy;
         public uint MouseData, Flags, Time;
@@ -79,19 +79,20 @@ internal static class NativeMouse
     }
 
     [StructLayout(LayoutKind.Explicit)]
-    private struct InputUnion
+    internal struct InputUnion
     {
         [FieldOffset(0)] public MouseInput Mouse;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Input
+    internal struct Input
     {
         public uint Type;
         public InputUnion Data;
     }
 
     internal delegate IntPtr HookProcedure(int nCode, IntPtr wParam, IntPtr lParam);
+    internal delegate uint InputSender(uint count, Input[] input, int size);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool RegisterRawInputDevices([In] RawDevice[] devices, uint count, uint size);
@@ -165,7 +166,11 @@ internal static class NativeMouse
 
     internal static void ReleaseCursor() => ReleaseClip(IntPtr.Zero);
 
-    internal static void Inject(uint flags, int data = 0)
+    internal static void Inject(uint flags, int data = 0) => Inject(flags, data, SendInput);
+
+    // The sender boundary lets regression tests exercise Windows failures without
+    // injecting real mouse events into the user's desktop.
+    internal static void Inject(uint flags, int data, InputSender sendInput)
     {
         Input[] input = [new()
         {
@@ -175,7 +180,26 @@ internal static class NativeMouse
                 Mouse = new MouseInput { Flags = flags, MouseData = unchecked((uint)data) }
             }
         }];
-        _ = SendInput(1, input, Marshal.SizeOf<Input>());
+        if (sendInput(1, input, Marshal.SizeOf<Input>()) != 1)
+        {
+            int error = Marshal.GetLastWin32Error();
+            // SendInput can fail without setting an error, including UIPI blocks.
+            // https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-sendinput
+            throw new Win32Exception(error,
+                $"Windows did not accept the mouse input (Win32 error {error}). " +
+                "An elevated application or secure desktop may be blocking it.");
+        }
+    }
+
+    internal static void ReleaseButtons(Action<Win32Exception> onError, InputSender? sendInput = null)
+    {
+        InputSender sender = sendInput ?? SendInput;
+        (uint flags, int data)[] releases = [(LEFTUP, 0), (RIGHTUP, 0), (MIDDLEUP, 0), (XUP, 1), (XUP, 2)];
+        foreach (var (flags, data) in releases)
+        {
+            try { Inject(flags, data, sender); }
+            catch (Win32Exception ex) { onError(ex); }
+        }
     }
 }
 

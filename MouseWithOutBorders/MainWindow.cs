@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Net;
 using System.Net.Sockets;
 
@@ -422,6 +423,7 @@ internal sealed class MainWindow : Form
                     _peer = peer;
                     bool active = false;
                     bool entersFromLeft = true;
+                    string disconnectedStatus = "Waiting for the mouse PC to reconnect...";
                     Ui(() => SetStatus("PC connected. Waiting for its mouse to cross over."));
                     try
                     {
@@ -472,6 +474,12 @@ internal sealed class MainWindow : Form
                         }, lifetime.Token).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+                    catch (Win32Exception ex)
+                    {
+                        // Closing this peer releases the controller's cursor.
+                        disconnectedStatus = "Mouse input failed: " + ex.Message;
+                        SettingsStore.Log(disconnectedStatus);
+                    }
                     catch (Exception ex)
                     {
                         SettingsStore.Log("Receiver connection: " + ex.Message);
@@ -481,7 +489,7 @@ internal sealed class MainWindow : Form
                         // Never leave a remote mouse button held after disconnect.
                         if (active) ReleaseButtons();
                         if (ReferenceEquals(_peer, peer)) _peer = null;
-                        Ui(() => { if (_runCts == lifetime) SetStatus("Waiting for the mouse PC to reconnect..."); });
+                        Ui(() => { if (_runCts == lifetime) SetStatus(disconnectedStatus); });
                     }
                 }
             }
@@ -510,14 +518,8 @@ internal sealed class MainWindow : Form
     private static int RatioToY(Rectangle area, double ratio) =>
         area.Top + (int)Math.Round(Math.Clamp(ratio, 0, 1) * Math.Max(0, area.Height - 1));
 
-    private static void ReleaseButtons()
-    {
-        NativeMouse.Inject(NativeMouse.LEFTUP);
-        NativeMouse.Inject(NativeMouse.RIGHTUP);
-        NativeMouse.Inject(NativeMouse.MIDDLEUP);
-        NativeMouse.Inject(NativeMouse.XUP, 1);
-        NativeMouse.Inject(NativeMouse.XUP, 2);
-    }
+    private static void ReleaseButtons() =>
+        NativeMouse.ReleaseButtons(ex => SettingsStore.Log("Release mouse button: " + ex.Message));
 
     private bool OnMouseHook(uint message, NativeMouse.HookInfo info)
     {

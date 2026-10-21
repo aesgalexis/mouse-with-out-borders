@@ -1,5 +1,7 @@
+using System.ComponentModel;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace MouseWithOutBorders;
 
@@ -7,7 +9,7 @@ internal static class Program
 {
     private static async Task Main()
     {
-        Console.WriteLine("Mouse peer protocol smoke tests...");
+        Console.WriteLine("Mouse transport and input smoke tests...");
 
         byte[] key = MousePeer.ParseKey(MousePeer.NewKey());
         if (key.Length != 16) throw new Exception("Incorrect key length.");
@@ -15,8 +17,18 @@ internal static class Program
         Console.WriteLine("PASS: authenticated mouse data roundtrip.");
         await TestIncorrectKeyRejected(key);
         Console.WriteLine("PASS: incorrect pairing key denied.");
+        await TestStalledPairing(key, afterProof: false);
+        Console.WriteLine("PASS: silent receiver times out and its socket is closed.");
+        await TestStalledPairing(key, afterProof: true);
+        Console.WriteLine("PASS: stalled pairing response times out and its socket is closed.");
+        await TestPairingCancellation(key);
+        Console.WriteLine("PASS: user cancellation is preserved during pairing.");
+        TestMouseInjection();
+        Console.WriteLine("PASS: mouse events are encoded correctly and rejected input reports an error.");
+        TestButtonReleaseFailures();
+        Console.WriteLine("PASS: all buttons are released even when Windows rejects earlier releases.");
 
-        Console.WriteLine("All protocol smoke tests passed.");
+        Console.WriteLine("All smoke tests passed.");
     }
 
     private static async Task TestAuthenticatedRoundTrip(byte[] key)
@@ -92,5 +104,121 @@ internal static class Program
             await server;
         }
         finally { listener.Stop(); }
+    }
+
+    private static async Task TestStalledPairing(byte[] key, bool afterProof)
+    {
+        using CancellationTokenSource watchdog = new(TimeSpan.FromSeconds(12));
+        TcpListener listener = new(IPAddress.Loopback, MousePeer.Port);
+        listener.Start();
+        try
+        {
+            Task<MousePeer> connection = MousePeer.ConnectAsync("127.0.0.1", key, watchdog.Token);
+            using TcpClient socket = await listener.AcceptTcpClientAsync(watchdog.Token);
+            using StreamReader reader = new(socket.GetStream(), leaveOpen: true);
+            using StreamWriter writer = new(socket.GetStream(), leaveOpen: true) { AutoFlush = true };
+            if (afterProof)
+            {
+                await writer.WriteLineAsync(("MOUSE1|" + new string('A', 48)).AsMemory(), watchdog.Token);
+                string? proof = await reader.ReadLineAsync(watchdog.Token);
+                if (proof is null || !proof.StartsWith("PROOF|", StringComparison.Ordinal))
+                    throw new Exception("Controller did not send its pairing proof.");
+            }
+
+            try
+            {
+                using MousePeer unexpected = await connection.WaitAsync(watchdog.Token);
+                throw new Exception("Controller accepted a receiver that never completed pairing.");
+            }
+            catch (TimeoutException) when (!watchdog.IsCancellationRequested) { /* expected */ }
+
+            if (await reader.ReadLineAsync(watchdog.Token) is not null)
+                throw new Exception("Timed-out controller left its connection open.");
+        }
+        finally
+        {
+            watchdog.Cancel();
+            listener.Stop();
+        }
+    }
+
+    private static async Task TestPairingCancellation(byte[] key)
+    {
+        using CancellationTokenSource watchdog = new(TimeSpan.FromSeconds(12));
+        using CancellationTokenSource cancelled = CancellationTokenSource.CreateLinkedTokenSource(watchdog.Token);
+        TcpListener listener = new(IPAddress.Loopback, MousePeer.Port);
+        listener.Start();
+        try
+        {
+            Task<MousePeer> connection = MousePeer.ConnectAsync("127.0.0.1", key, cancelled.Token);
+            using TcpClient socket = await listener.AcceptTcpClientAsync(watchdog.Token);
+            cancelled.Cancel();
+            try
+            {
+                using MousePeer unexpected = await connection.WaitAsync(watchdog.Token);
+                throw new Exception("Cancelled pairing unexpectedly succeeded.");
+            }
+            catch (OperationCanceledException) when (cancelled.IsCancellationRequested && !watchdog.IsCancellationRequested)
+            { /* User cancellation must not become a timeout. */ }
+
+            using StreamReader reader = new(socket.GetStream());
+            if (await reader.ReadLineAsync(watchdog.Token) is not null)
+                throw new Exception("Cancelled controller left its connection open.");
+        }
+        finally
+        {
+            cancelled.Cancel();
+            listener.Stop();
+        }
+    }
+
+    private static void TestMouseInjection()
+    {
+        NativeMouse.Inject(NativeMouse.WHEEL, -120, (count, inputs, size) =>
+        {
+            if (count != 1 || inputs.Length != 1 || inputs[0].Type != 0 ||
+                inputs[0].Data.Mouse.Flags != NativeMouse.WHEEL ||
+                inputs[0].Data.Mouse.MouseData != unchecked((uint)-120) ||
+                size != (IntPtr.Size == 8 ? 40 : 28))
+                throw new Exception("Incorrect native mouse event or INPUT structure layout.");
+            return 1;
+        });
+
+        foreach (int error in new[] { 0, 5 })
+        {
+            try
+            {
+                NativeMouse.Inject(NativeMouse.LEFTDOWN, 0, (_, _, _) =>
+                {
+                    Marshal.SetLastPInvokeError(error);
+                    return 0;
+                });
+                throw new Exception("Rejected input was silently ignored.");
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == error)
+            {
+                if (!ex.Message.Contains("Windows did not accept", StringComparison.Ordinal))
+                    throw new Exception("Input error did not explain that Windows rejected the event.");
+            }
+        }
+    }
+
+    private static void TestButtonReleaseFailures()
+    {
+        List<(uint flags, int data)> attempts = [];
+        List<Win32Exception> failures = [];
+        NativeMouse.ReleaseButtons(failures.Add, (_, inputs, _) =>
+        {
+            attempts.Add((inputs[0].Data.Mouse.Flags, (int)inputs[0].Data.Mouse.MouseData));
+            Marshal.SetLastPInvokeError(5);
+            return 0;
+        });
+
+        (uint flags, int data)[] expected = [
+            (NativeMouse.LEFTUP, 0), (NativeMouse.RIGHTUP, 0), (NativeMouse.MIDDLEUP, 0),
+            (NativeMouse.XUP, 1), (NativeMouse.XUP, 2)
+        ];
+        if (!attempts.SequenceEqual(expected) || failures.Count != expected.Length)
+            throw new Exception("A failed release prevented cleanup of other mouse buttons.");
     }
 }

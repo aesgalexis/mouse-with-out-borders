@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Connection and input recovery
+
+- Limit controller connection and pairing to five seconds, while preserving user cancellation.
+- Report Windows mouse input failures and close the affected peer so the controller releases its cursor.
+- Attempt every mouse button release during cleanup, logging failures without stopping the receiver.
+- Add regression checks for stalled pairing, cancellation, rejected input and button cleanup.
+
 ## 0.1.1 — Windows installer and operational setup
 
 - Assisted local Windows installation and uninstall PowerShell scripts.

@@ -81,25 +81,33 @@ internal sealed class MousePeer : IDisposable
 
     internal static async Task<MousePeer> ConnectAsync(string host, byte[] key, CancellationToken ct)
     {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(5));
+        CancellationToken connecting = deadline.Token;
         TcpClient client = new();
         try
         {
-            await client.ConnectAsync(host, Port, ct);
+            await client.ConnectAsync(host, Port, connecting);
             var (reader, writer) = OpenStreams(client);
-            string hello = await reader.ReadLineAsync(ct) ?? throw new IOException("Receiver disconnected.");
+            string hello = await reader.ReadLineAsync(connecting) ?? throw new IOException("Receiver disconnected.");
             if (!hello.StartsWith("MOUSE1|", StringComparison.Ordinal))
                 throw new IOException("Incompatible receiver.");
             string nonce = hello["MOUSE1|".Length..];
             if (nonce.Length != 48 || !nonce.All(Uri.IsHexDigit))
                 throw new IOException("Invalid receiver challenge.");
 
-            await writer.WriteLineAsync(("PROOF|" + Mac(key, "CLIENT|" + nonce)).AsMemory(), ct);
-            string response = await reader.ReadLineAsync(ct) ?? throw new IOException("Receiver disconnected.");
+            await writer.WriteLineAsync(("PROOF|" + Mac(key, "CLIENT|" + nonce)).AsMemory(), connecting);
+            string response = await reader.ReadLineAsync(connecting) ?? throw new IOException("Receiver disconnected.");
             if (!response.StartsWith("OK|", StringComparison.Ordinal) ||
                 !SameMac(key, "SERVER|" + nonce, response["OK|".Length..]))
                 throw new UnauthorizedAccessException("Pairing key rejected by receiver.");
 
             return new MousePeer(client, reader, writer, key, nonce);
+        }
+        catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            client.Dispose();
+            throw new TimeoutException("Receiver connection or pairing timed out after 5 seconds. Check the receiving PC and try again.", ex);
         }
         catch
         {

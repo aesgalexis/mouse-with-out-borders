@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../MouseWithOutBorders/MousePeer.cs" Link="MousePeer.cs" />
+    <Compile Include="../../MouseWithOutBorders/NativeMouse.cs" Link="NativeMouse.cs" />
   </ItemGroup>
 </Project>

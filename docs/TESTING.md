@@ -12,6 +12,15 @@ This file distinguishes automated checks from hardware testing. Do not claim a f
 
 CI checks only what it runs. A successful build does not prove smooth mouse interaction.
 
+## Connection and input regression checks
+
+Run `dotnet run --project tests/MousePeer.SmokeTests/MousePeer.SmokeTests.csproj -c Release`.
+The suite also checks a receiver that never sends its challenge, a receiver that
+stops after receiving the pairing proof, cancellation and socket cleanup. Input
+tests use a fake native sender to verify event layout, rejected input with and
+without a Windows error code, and continued cleanup after a failed button release.
+These checks do not inject mouse events into the desktop.
+
 ## Physical two-PC acceptance — not yet performed
 
 - [ ] Setup.exe installs on PC A and PC B
@@ -30,6 +39,7 @@ CI checks only what it runs. A successful build does not prove smooth mouse inte
 - [ ] Windows Firewall rule only allows private LAN; uninstall removes optional rule
 - [ ] No unintended keyboard, clipboard or file-sharing functionality
 - [ ] UAC/secure desktop limitations communicated accurately
+- [ ] A Windows input rejection appears in receiver status/logs and returns the controller's cursor
 
 ## Bug reports
 
