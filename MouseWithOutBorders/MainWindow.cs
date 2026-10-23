@@ -11,6 +11,8 @@ internal sealed class MainWindow : Form
     private static readonly Color Foreground = Color.FromArgb(235, 241, 249);
     private static readonly Color Muted = Color.FromArgb(159, 176, 194);
     private static readonly Color Accent = Color.FromArgb(90, 162, 255);
+    private static readonly uint InstallerExitMessage =
+        NativeMouse.RegisterWindowMessage("MouseWithOutBorders.ExitForUpdate.79DBA1BD");
 
     private readonly AppSettings _settings;
     private readonly Action<AppSettings> _saveSettings;
@@ -58,7 +60,7 @@ internal sealed class MainWindow : Form
     private readonly Button _toggle = new() { Name = "ToggleConnection", Left = 28, Top = 403, Width = 480, Height = 48 };
     private readonly CheckBox _autoConnect = new() { Left = 28, Top = 468, Width = 480, Height = 25, Text = "Connect / listen automatically when opened" };
     private readonly CheckBox _startup = new() { Left = 28, Top = 502, Width = 480, Height = 25, Text = "Start with Windows" };
-    private readonly CheckBox _minimizeTray = new() { Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
+    private readonly CheckBox _minimizeTray = new() { Name = "MinimizeToTray", Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
     private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
     private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
     private readonly LinkLabel _logLink = new() { Left = 28, Top = 705, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
@@ -622,6 +624,11 @@ internal sealed class MainWindow : Form
 
     protected override void WndProc(ref Message message)
     {
+        if (InstallerExitMessage != 0 && (uint)message.Msg == InstallerExitMessage)
+        {
+            ExitApplication();
+            return;
+        }
         if (message.Msg == NativeMouse.WM_INPUT && _capture is not null)
         {
             var delta = NativeMouse.ReadRelativeDelta(message.LParam);

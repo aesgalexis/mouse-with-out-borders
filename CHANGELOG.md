@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — Installer updates
+
+- Close the installed MWB automatically before updates, including when it is hidden in the notification area.
+- Request a clean exit first, then terminate older or unresponsive instances from the same installation and Windows session.
+- Apply the same shutdown when uninstalling and stop before changing files if MWB cannot be closed.
+
 ## 0.1.2 — Clear pairing and connection recovery
 
 - Replace the hidden role dropdown with two visible role buttons and a direct action to enter the other PC's code, including while listening.

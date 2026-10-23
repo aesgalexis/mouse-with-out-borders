@@ -54,13 +54,31 @@ internal static class Program
             toggle.Text != "Connect mouse")
             throw new Exception("Enter-code action must stop listening and switch to the connecting role.");
 
+        Find<CheckBox>(window, "MinimizeToTray").Checked = true;
         window.Close();
+        if (window.IsDisposed || window.Visible)
+            throw new Exception("Closing normally should keep the app running in the notification area.");
+        uint exitMessage = NativeMouse.RegisterWindowMessage("MouseWithOutBorders.ExitForUpdate.79DBA1BD");
+        if (exitMessage == 0 || !PostMessage(window.Handle, exitMessage, IntPtr.Zero, IntPtr.Zero))
+            throw new Exception("Could not send the installer's exit request.");
+        DateTime exitDeadline = DateTime.UtcNow.AddSeconds(5);
+        while (!window.IsDisposed && DateTime.UtcNow < exitDeadline)
+        {
+            Application.DoEvents();
+            Thread.Sleep(10);
+        }
+        if (!window.IsDisposed)
+            throw new Exception("The installer's exit request must exit MWB even when it is hidden in the tray.");
         if (saves == 0) throw new Exception("Pairing preferences were not saved.");
         Console.WriteLine("PASS: receiver, enter-code action, editable code, role persistence and switching while listening.");
+        Console.WriteLine("PASS: installer exit request closes MWB from the notification area.");
     }
 
     private static T Find<T>(Control parent, string name) where T : Control =>
         parent.Controls.Find(name, true).OfType<T>().Single();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
     private static void SaveScreenshot(Form window, string[] args, string name)
     {

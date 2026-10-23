@@ -5,6 +5,9 @@ namespace MouseWithOutBorders;
 
 internal static class NativeMouse
 {
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern uint RegisterWindowMessage(string message);
+
     internal const int WM_INPUT = 0x00FF;
     internal const uint WM_MOUSEMOVE = 0x0200;
     internal const uint WM_LBUTTONDOWN = 0x0201;

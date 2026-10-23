@@ -18,6 +18,11 @@ Version **0.1.2** includes the role buttons and 8-character pairing codes descri
 
 Keep both PCs powered on and connected to the same trusted private LAN.
 
+The next installer automatically closes the installed app before updating, even
+when its window is hidden in the notification area. It requests a clean exit,
+then closes an older or unresponsive instance if necessary. Settings are retained.
+The same shutdown applies when uninstalling.
+
 Upgrading an existing receiver replaces its old 32-character key with a saved 8-character code. Enter the new code on the mouse PC once. Connections to older receivers still accept their 32-character keys.
 
 ## Option B — assisted install (Windows PowerShell)

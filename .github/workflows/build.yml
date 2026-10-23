@@ -38,7 +38,7 @@ jobs:
       - name: Validate PowerShell installer scripts
         shell: pwsh
         run: |
-          foreach ($script in @("scripts/install.ps1", "scripts/uninstall.ps1", "scripts/generate-icon.ps1")) {
+          foreach ($script in @("scripts/install.ps1", "scripts/uninstall.ps1", "scripts/generate-icon.ps1", "tests/Installer.SmokeTests.ps1")) {
             $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
@@ -89,25 +89,17 @@ jobs:
           & $compiler "/DAppVersion=${{ steps.version.outputs.version }}" "installer\MouseWithOutBorders.iss"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Smoke-test installation and uninstall
+      - name: Test installation, running-app upgrades and uninstall
         shell: pwsh
         run: |
           $installer = @(Get-ChildItem "dist/installer/*-Setup.exe") | Select-Object -First 1
           if (-not $installer) { throw "Setup.exe was not produced" }
-          $testDir = Join-Path $env:LOCALAPPDATA "Programs\MouseWithOutBorders-InstallerCI"
-          $install = Start-Process -FilePath $installer.FullName -ArgumentList @(
-            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', ('/DIR="' + $testDir + '"')
-          ) -Wait -PassThru
-          if ($install.ExitCode -ne 0) { throw "Setup exited $($install.ExitCode)" }
-          $app = Join-Path $testDir "MouseWithOutBorders.exe"
-          if (-not (Test-Path $app)) { throw "Installed EXE not found at $app" }
-          $uninstaller = Join-Path $testDir "unins000.exe"
-          if (-not (Test-Path $uninstaller)) { throw "Uninstaller was not created" }
-          $uninstall = Start-Process -FilePath $uninstaller -ArgumentList @(
-            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
-          ) -Wait -PassThru
-          if ($uninstall.ExitCode -ne 0) { throw "Uninstall exited $($uninstall.ExitCode)" }
-          if (Test-Path $app) { throw "EXE still present after uninstall" }
+          $legacy = 'dist/MouseWithOutBorders-0.1.2-Portable.zip'
+          Invoke-WebRequest -Uri 'https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.2/MouseWithOutBorders-0.1.2-Portable.zip' -OutFile $legacy
+          if ((Get-FileHash -LiteralPath $legacy -Algorithm SHA256).Hash -ine '876f9d244fe80d3cc81e0ff305533df4ea5e207ac8584db71b328d9bc856f4c3') {
+            throw 'Legacy test fixture checksum mismatch.'
+          }
+          ./tests/Installer.SmokeTests.ps1 -InstallerPath $installer.FullName -LegacyPortablePath $legacy
 
       - name: Generate release checksums
         shell: pwsh

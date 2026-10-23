@@ -38,6 +38,24 @@ publish, all transport/input smoke tests (including short and legacy keys),
 and the pairing UI checks passed. Both setup screens were rendered and inspected.
 This does not replace the physical two-PC checks below.
 
+## Installer upgrade regression checks
+
+The next installer is checked with MWB open as a window, hidden in the
+notification area, and running the original v0.1.2 executable. Current builds
+must exit cleanly; v0.1.2 exercises the fallback for an older app that does not
+understand the installer's exit request. Uninstall is also checked with MWB in
+the tray. `tests/Installer.SmokeTests.ps1` performs these checks in the disposable
+GitHub Actions account; it refuses to overwrite a different local installation.
+
+The UI tests also send the installer exit message to a hidden window and verify
+that the app exits instead of remaining in the notification area.
+
+Local verification on 2026-10-23: Inno Setup 6.7.3 compiled the candidate;
+updates from v0.1.2 in the tray and from the candidate both visible and hidden
+passed. The older build exercised forced termination; the candidate exited
+cleanly in both cases. The published v0.1.2 executable and original settings were
+restored afterward, with the pairing code unchanged.
+
 ## Physical two-PC acceptance — not yet performed
 
 - [ ] Setup.exe installs on PC A and PC B
