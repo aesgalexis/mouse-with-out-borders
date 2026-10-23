@@ -22,6 +22,8 @@ internal sealed record MousePacket(
 internal sealed class MousePeer : IDisposable
 {
     internal const int Port = 42187;
+    internal const int PairingCodeLength = 8;
+    private const string PairingAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
     private readonly TcpClient _client;
     private readonly StreamReader _reader;
@@ -55,15 +57,27 @@ internal sealed class MousePeer : IDisposable
             new StreamWriter(stream, new UTF8Encoding(false), 4096, true) { AutoFlush = true });
     }
 
-    internal static byte[] ParseKey(string hex)
+    internal static string NormalizeKey(string code) =>
+        new(code.Where(c => !char.IsWhiteSpace(c) && c != '-').Select(char.ToUpperInvariant).ToArray());
+
+    internal static byte[] ParseKey(string code)
     {
-        byte[] key = Convert.FromHexString(hex.Trim());
-        if (key.Length != 16)
-            throw new ArgumentException("The pairing key must contain 32 hexadecimal characters.");
-        return key;
+        string normalized = NormalizeKey(code);
+        if (normalized.Length == PairingCodeLength && normalized.All(PairingAlphabet.Contains))
+            return Encoding.ASCII.GetBytes(normalized);
+
+        // Keep connecting to receivers that still run the original app.
+        if (normalized.Length == 32 && normalized.All(Uri.IsHexDigit))
+            return Convert.FromHexString(normalized);
+
+        throw new ArgumentException("Enter the receiving PC's 8-character pairing code. Older 32-character keys also work.");
     }
 
-    internal static string NewKey() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+    internal static string NewKey() => string.Create(PairingCodeLength, 0, (characters, _) =>
+    {
+        for (int i = 0; i < characters.Length; i++)
+            characters[i] = PairingAlphabet[RandomNumberGenerator.GetInt32(PairingAlphabet.Length)];
+    });
 
     private static string Mac(byte[] key, string message) =>
         Convert.ToHexString(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(message)));

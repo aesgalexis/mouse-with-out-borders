@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased — Connection and input recovery
+## 0.1.2 — Clear pairing and connection recovery
 
+- Replace the hidden role dropdown with two visible role buttons and a direct action to enter the other PC's code, including while listening.
+- Generate saved 8-character pairing codes, migrate existing local keys, accept lowercase/formatted input and retain connections to receivers with legacy keys.
+- Add pairing-code and setup UI regression checks.
+- Correct GitHub download URLs and include native runtime libraries in the single-file portable app and installer.
 - Limit controller connection and pairing to five seconds, while preserving user cancellation.
 - Report Windows mouse input failures and close the affected peer so the controller releases its cursor.
 - Attempt every mouse button release during cleanup, logging failures without stopping the receiver.

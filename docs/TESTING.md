@@ -21,11 +21,30 @@ tests use a fake native sender to verify event layout, rejected input with and
 without a Windows error code, and continued cleanup after a failed button release.
 These checks do not inject mouse events into the desktop.
 
+Pairing checks cover generated 8-character codes, case/spacing normalization,
+invalid input, migration of existing local keys without changing connection
+preferences, legacy 32-character keys, and authenticated round trips with both
+key formats.
+
+Run `dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj -c Release`
+on Windows to check that both roles are visible, the receiver offers a direct
+enter-code action, the connecting role exposes editable IP/code fields, entered
+details survive role changes, and the action stops an active listener before
+switching roles. Settings writes are replaced with an in-memory callback, and
+the test listener uses an available loopback port so an installed app can stay open.
+
+Local verification on 2026-10-23: Windows Release build, self-contained x64
+publish, all transport/input smoke tests (including short and legacy keys),
+and the pairing UI checks passed. Both setup screens were rendered and inspected.
+This does not replace the physical two-PC checks below.
+
 ## Physical two-PC acceptance — not yet performed
 
 - [ ] Setup.exe installs on PC A and PC B
 - [ ] App appears in Start menu and tray; uninstaller removes it
 - [ ] IP/key pairing connects only with correct key
+- [ ] Both PCs initially show a code; the mouse PC's enter-code action opens the IP/code fields
+- [ ] After upgrading an existing receiver, its new 8-character code pairs and persists after restart
 - [ ] Moving right across PC A outer edge reaches PC B
 - [ ] Moving left across PC B edge returns to PC A
 - [ ] Primary, secondary, middle and X button clicks reach PC B
@@ -43,7 +62,7 @@ These checks do not inject mouse events into the desktop.
 
 ## Bug reports
 
-File an issue at https://github.com/aesgalexis/mouse-with-out-borders/issues containing:
+File an issue at https://github.com/aesgalexis/mouse-without-borders/issues containing:
 
 1. App version on both PCs.
 2. Windows version on both PCs, physical screen arrangement and monitor resolution.

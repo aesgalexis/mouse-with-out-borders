@@ -11,10 +11,13 @@ internal static class Program
     {
         Console.WriteLine("Mouse transport and input smoke tests...");
 
+        TestPairingCodes();
+        Console.WriteLine("PASS: short codes, input normalization, legacy keys and saved-code migration.");
         byte[] key = MousePeer.ParseKey(MousePeer.NewKey());
-        if (key.Length != 16) throw new Exception("Incorrect key length.");
         await TestAuthenticatedRoundTrip(key);
         Console.WriteLine("PASS: authenticated mouse data roundtrip.");
+        await TestAuthenticatedRoundTrip(MousePeer.ParseKey("0123456789ABCDEF0123456789ABCDEF"));
+        Console.WriteLine("PASS: legacy pairing keys still authenticate.");
         await TestIncorrectKeyRejected(key);
         Console.WriteLine("PASS: incorrect pairing key denied.");
         await TestStalledPairing(key, afterProof: false);
@@ -29,6 +32,52 @@ internal static class Program
         Console.WriteLine("PASS: all buttons are released even when Windows rejects earlier releases.");
 
         Console.WriteLine("All smoke tests passed.");
+    }
+
+    private static void TestPairingCodes()
+    {
+        for (int i = 0; i < 100; i++)
+        {
+            string code = MousePeer.NewKey();
+            if (code.Length != 8 || code.Any(c => "01IO".Contains(c)) || MousePeer.ParseKey(code).Length != 8)
+                throw new Exception("Generated pairing code is not eight unambiguous characters.");
+        }
+
+        if (!MousePeer.ParseKey("  abcd-23xy  ").SequenceEqual(MousePeer.ParseKey("ABCD23XY")))
+            throw new Exception("Typing lowercase or pasting a formatted code changes the key.");
+        if (MousePeer.ParseKey("0123456789abcdef0123456789abcdef").Length != 16)
+            throw new Exception("Legacy pairing keys are no longer supported.");
+
+        foreach (string invalid in new[] { "", "ABC2345", "ABC234567", "ABCD!234", "ABCD0123", new string('Z', 32) })
+        {
+            try
+            {
+                MousePeer.ParseKey(invalid);
+                throw new Exception("Invalid pairing code was accepted.");
+            }
+            catch (ArgumentException ex) when (ex.Message.Contains("8-character", StringComparison.Ordinal)) { }
+        }
+
+        AppSettings settings = new()
+        {
+            PairingKey = "0123456789ABCDEF0123456789ABCDEF",
+            Role = "Controller", Host = "127.0.0.1", RemoteKey = "FEDCBA9876543210FEDCBA9876543210",
+            AutoConnect = true, ExitEdge = "Left"
+        };
+        if (!settings.UpgradePairingCode() || settings.PairingKey.Length != 8)
+            throw new Exception("Existing receiver did not migrate to a short code.");
+        string upgraded = settings.PairingKey;
+        if (settings.UpgradePairingCode() || settings.PairingKey != upgraded || settings.Role != "Controller" ||
+            settings.Host != "127.0.0.1" || settings.RemoteKey != "FEDCBA9876543210FEDCBA9876543210" ||
+            !settings.AutoConnect || settings.ExitEdge != "Left")
+            throw new Exception("Code migration changed saved connection settings or a valid short code.");
+
+        foreach (string? invalid in new[] { "", "ABCD0123", null })
+        {
+            settings.PairingKey = invalid!;
+            if (!settings.UpgradePairingCode() || MousePeer.ParseKey(settings.PairingKey).Length != 8)
+                throw new Exception("Invalid saved code was not replaced.");
+        }
     }
 
     private static async Task TestAuthenticatedRoundTrip(byte[] key)

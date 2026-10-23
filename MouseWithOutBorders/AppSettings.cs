@@ -13,6 +13,26 @@ internal sealed class AppSettings
     public string ExitEdge { get; set; } = "Right";
     public bool AutoConnect { get; set; }
     public bool MinimizeToTray { get; set; } = true;
+
+    internal bool UpgradePairingCode()
+    {
+        string code = MousePeer.NormalizeKey(PairingKey ?? "");
+        if (code.Length == MousePeer.PairingCodeLength)
+        {
+            try
+            {
+                MousePeer.ParseKey(code);
+                bool changed = PairingKey != code;
+                PairingKey = code;
+                return changed;
+            }
+            catch (ArgumentException) { }
+        }
+
+        // The receiver always displays a short code, including after an upgrade.
+        PairingKey = MousePeer.NewKey();
+        return true;
+    }
 }
 
 internal static class SettingsStore
@@ -29,10 +49,16 @@ internal static class SettingsStore
     {
         try
         {
-            if (!File.Exists(FilePath)) return new AppSettings();
-            var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings();
-            try { MousePeer.ParseKey(settings.PairingKey); }
-            catch { settings.PairingKey = MousePeer.NewKey(); }
+            bool exists = File.Exists(FilePath);
+            var settings = exists
+                ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings()
+                : new AppSettings();
+            bool upgraded = settings.UpgradePairingCode();
+            if (!exists || upgraded)
+            {
+                try { Save(settings); }
+                catch (Exception ex) { Log("Save pairing code: " + ex.Message); }
+            }
             return settings;
         }
         catch
@@ -63,6 +89,7 @@ internal static class SettingsStore
     }
 }
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal static class WindowsStartup
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";

@@ -1,6 +1,6 @@
 #define AppName "Mouse, with out borders"
 #ifndef AppVersion
-  #define AppVersion "0.1.1"
+  #define AppVersion "0.1.2"
 #endif
 
 [Setup]
@@ -9,8 +9,8 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=Mouse, with out borders
-AppPublisherURL=https://github.com/aesgalexis/mouse-with-out-borders
-AppSupportURL=https://github.com/aesgalexis/mouse-with-out-borders/issues
+AppPublisherURL=https://github.com/aesgalexis/mouse-without-borders
+AppSupportURL=https://github.com/aesgalexis/mouse-without-borders/issues
 DefaultDirName={localappdata}\Programs\MouseWithOutBorders
 DefaultGroupName={#AppName}
 UninstallDisplayIcon={app}\MouseWithOutBorders.exe

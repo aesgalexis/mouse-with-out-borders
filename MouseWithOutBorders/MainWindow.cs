@@ -12,28 +12,56 @@ internal sealed class MainWindow : Form
     private static readonly Color Muted = Color.FromArgb(159, 176, 194);
     private static readonly Color Accent = Color.FromArgb(90, 162, 255);
 
-    private readonly AppSettings _settings = SettingsStore.Load();
+    private readonly AppSettings _settings;
+    private readonly Action<AppSettings> _saveSettings;
+    private readonly Func<TcpListener> _listenerFactory;
     private readonly bool _launchedAtStartup;
-    private readonly ComboBox _role = new() { Left = 28, Top = 119, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly RadioButton _controllerRole = new()
+    {
+        Name = "ControllerRole", Left = 28, Top = 119, Width = 232, Height = 50,
+        Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
+        Text = "I have the mouse\nEnter the other PC's code", TabIndex = 0
+    };
+    private readonly RadioButton _receiverRole = new()
+    {
+        Name = "ReceiverRole", Left = 276, Top = 119, Width = 232, Height = 50,
+        Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
+        Text = "This PC receives the mouse\nShow this PC's code", TabIndex = 1
+    };
     private readonly Label _receiverIp = new() { Left = 28, Top = 180, Width = 480, Height = 42 };
-    private readonly Label _receiverKeyLabel = new() { Left = 28, Top = 231, Width = 480, Text = "PAIRING KEY" };
-    private readonly TextBox _receiverKey = new() { Left = 28, Top = 258, Width = 366, ReadOnly = true };
-    private readonly Button _copy = new() { Left = 402, Top = 255, Width = 106, Height = 34, Text = "Copy key" };
+    private readonly Label _receiverKeyLabel = new() { Left = 28, Top = 231, Width = 480, Text = "THIS PC'S PAIRING CODE (8 CHARACTERS)" };
+    private readonly TextBox _receiverKey = new() { Name = "LocalPairingCode", Left = 28, Top = 258, Width = 366, ReadOnly = true };
+    private readonly Button _copy = new() { Left = 402, Top = 255, Width = 106, Height = 34, Text = "Copy code" };
+    private readonly Label _receiverSteps = new()
+    {
+        Left = 28, Top = 302, Width = 480, Height = 46,
+        Text = "Click Start receiving. On the mouse PC, choose 'I have the mouse' and enter this PC's local IP and code."
+    };
+    private readonly Button _enterCode = new()
+    {
+        Name = "EnterOtherPcCode", Left = 28, Top = 354, Width = 480, Height = 36,
+        Text = "Have the other PC's code? Enter it here"
+    };
 
-    private readonly Label _hostLabel = new() { Left = 28, Top = 178, Width = 480, Text = "OTHER PC'S LOCAL IP" };
-    private readonly TextBox _host = new() { Left = 28, Top = 205, Width = 480 };
-    private readonly Label _hostKeyLabel = new() { Left = 28, Top = 245, Width = 480, Text = "PAIRING KEY FROM OTHER PC" };
-    private readonly TextBox _hostKey = new() { Left = 28, Top = 272, Width = 480 };
+    private readonly Label _hostLabel = new() { Left = 28, Top = 178, Width = 480, Text = "RECEIVING PC'S LOCAL IP" };
+    private readonly TextBox _host = new() { Name = "ReceiverHost", Left = 28, Top = 205, Width = 480, PlaceholderText = "e.g. 192.168.1.25", TabIndex = 2 };
+    private readonly Label _hostKeyLabel = new() { Left = 28, Top = 245, Width = 480, Text = "ENTER THE RECEIVING PC'S PAIRING CODE" };
+    private readonly TextBox _hostKey = new()
+    {
+        Name = "RemotePairingCode", Left = 28, Top = 272, Width = 480,
+        PlaceholderText = "8 characters shown on the other PC", CharacterCasing = CharacterCasing.Upper,
+        AccessibleName = "Receiving PC's pairing code", TabIndex = 3
+    };
     private readonly Label _edgeLabel = new() { Left = 28, Top = 318, Width = 480, Text = "WHICH EDGE LEADS TO THE OTHER PC?" };
     private readonly ComboBox _edge = new() { Left = 28, Top = 345, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
 
-    private readonly Button _toggle = new() { Left = 28, Top = 403, Width = 480, Height = 48 };
+    private readonly Button _toggle = new() { Name = "ToggleConnection", Left = 28, Top = 403, Width = 480, Height = 48 };
     private readonly CheckBox _autoConnect = new() { Left = 28, Top = 468, Width = 480, Height = 25, Text = "Connect / listen automatically when opened" };
     private readonly CheckBox _startup = new() { Left = 28, Top = 502, Width = 480, Height = 25, Text = "Start with Windows" };
     private readonly CheckBox _minimizeTray = new() { Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
-    private readonly Label _status = new() { Left = 28, Top = 585, Width = 480, Height = 45 };
-    private readonly Label _help = new() { Left = 28, Top = 645, Width = 480, Height = 35 };
-    private readonly LinkLabel _logLink = new() { Left = 28, Top = 695, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
+    private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
+    private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
+    private readonly LinkLabel _logLink = new() { Left = 28, Top = 705, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
 
     private readonly NotifyIcon _tray;
     private CancellationTokenSource? _runCts;
@@ -45,11 +73,18 @@ internal sealed class MainWindow : Form
     private bool _initializing = true;
     private bool _exitRequested;
 
-    private bool IsReceiver => _role.SelectedIndex == 0;
+    private bool IsReceiver => _receiverRole.Checked;
     private bool ExitRight => _edge.SelectedIndex != 1;
 
     internal MainWindow(bool launchedAtStartup = false)
+        : this(SettingsStore.Load(), SettingsStore.Save, launchedAtStartup) { }
+
+    internal MainWindow(AppSettings settings, Action<AppSettings> saveSettings, bool launchedAtStartup = false,
+        Func<TcpListener>? listenerFactory = null)
     {
+        _settings = settings;
+        _saveSettings = saveSettings;
+        _listenerFactory = listenerFactory ?? (() => new TcpListener(IPAddress.Any, MousePeer.Port));
         _launchedAtStartup = launchedAtStartup;
         Text = "Mouse, with out borders";
         Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
@@ -73,17 +108,17 @@ internal sealed class MainWindow : Form
             Text = "One mouse. Two Windows computers. Nothing else.",
             Left = 28, Top = 65, Width = 480, Height = 30, ForeColor = Muted
         };
-        Label modeLabel = new() { Text = "THIS COMPUTER", Left = 28, Top = 96, Width = 480 };
+        Label modeLabel = new() { Text = "CHOOSE THIS PC'S ROLE", Left = 28, Top = 96, Width = 480 };
         Label footer = new()
         {
             Text = "Private LAN only  •  TCP 42187  •  No keyboard sharing",
-            Left = 28, Top = 669, Width = 480, Height = 24, ForeColor = Muted,
+            Left = 28, Top = 681, Width = 480, Height = 20, ForeColor = Muted,
             Font = new Font("Segoe UI", 9)
         };
 
         Controls.AddRange([
-            title, subtitle, modeLabel, _role,
-            _receiverIp, _receiverKeyLabel, _receiverKey, _copy,
+            title, subtitle, modeLabel, _controllerRole, _receiverRole,
+            _receiverIp, _receiverKeyLabel, _receiverKey, _copy, _receiverSteps, _enterCode,
             _hostLabel, _host, _hostKeyLabel, _hostKey, _edgeLabel, _edge,
             _toggle, _autoConnect, _startup, _minimizeTray, _status, _help, footer, _logLink
         ]);
@@ -91,7 +126,7 @@ internal sealed class MainWindow : Form
         foreach (Label label in Controls.OfType<Label>())
         {
             label.BackColor = Background;
-            if (label != title && label != subtitle && label != footer && label != _receiverIp && label != _status && label != _help)
+            if (label != title && label != subtitle && label != footer && label != _receiverIp && label != _receiverSteps && label != _status && label != _help)
             {
                 label.ForeColor = Muted;
                 label.Font = new Font("Segoe UI Semibold", 9, FontStyle.Bold);
@@ -104,6 +139,8 @@ internal sealed class MainWindow : Form
             text.ForeColor = Foreground;
             text.BorderStyle = BorderStyle.FixedSingle;
         }
+        _receiverKey.Font = new Font("Consolas", 16, FontStyle.Bold);
+        _hostKey.Font = new Font("Consolas", 14);
         foreach (ComboBox combo in Controls.OfType<ComboBox>())
         {
             combo.BackColor = Surface;
@@ -121,14 +158,26 @@ internal sealed class MainWindow : Form
         _toggle.BackColor = Accent;
         _toggle.ForeColor = Color.FromArgb(13, 27, 42);
         _toggle.Font = new Font("Segoe UI Semibold", 11, FontStyle.Bold);
-        _copy.FlatStyle = FlatStyle.Flat;
-        _copy.BackColor = Surface;
-        _copy.ForeColor = Foreground;
-        _copy.FlatAppearance.BorderColor = Muted;
+        foreach (Button button in new[] { _copy, _enterCode })
+        {
+            button.FlatStyle = FlatStyle.Flat;
+            button.BackColor = Surface;
+            button.ForeColor = Foreground;
+            button.FlatAppearance.BorderColor = Muted;
+        }
+        foreach (RadioButton role in new[] { _controllerRole, _receiverRole })
+        {
+            role.FlatStyle = FlatStyle.Flat;
+            role.FlatAppearance.BorderColor = Muted;
+            role.FlatAppearance.CheckedBackColor = Color.FromArgb(36, 72, 111);
+            role.BackColor = Surface;
+            role.ForeColor = Foreground;
+            role.Font = new Font("Segoe UI", 9);
+        }
 
-        _role.Items.AddRange(["Receive mouse (second PC)", "Control mouse (PC with physical mouse)"]);
         _edge.Items.AddRange(["Right edge → other PC on right", "Left edge → other PC on left"]);
-        _role.SelectedIndex = _settings.Role == "Controller" ? 1 : 0;
+        _controllerRole.Checked = _settings.Role == "Controller";
+        _receiverRole.Checked = !_controllerRole.Checked;
         _edge.SelectedIndex = _settings.ExitEdge == "Left" ? 1 : 0;
         _host.Text = _settings.Host;
         _hostKey.Text = _settings.RemoteKey;
@@ -162,7 +211,21 @@ internal sealed class MainWindow : Form
         };
         _tray.DoubleClick += (_, _) => ShowWindow();
 
-        _role.SelectedIndexChanged += (_, _) => { if (!_initializing) { ShowMode(); SavePreferences(); } };
+        _controllerRole.CheckedChanged += (_, _) =>
+        {
+            if (!_initializing && _controllerRole.Checked) { ShowMode(); SavePreferences(); }
+        };
+        _receiverRole.CheckedChanged += (_, _) =>
+        {
+            if (!_initializing && _receiverRole.Checked) { ShowMode(); SavePreferences(); }
+        };
+        _enterCode.Click += (_, _) =>
+        {
+            if (_runCts is not null) Stop();
+            _controllerRole.Checked = true;
+            if (string.IsNullOrWhiteSpace(_host.Text)) _host.Focus();
+            else _hostKey.Focus();
+        };
         _edge.SelectedIndexChanged += (_, _) => { if (!_initializing) SavePreferences(); };
         _host.Leave += (_, _) => SavePreferences();
         _hostKey.Leave += (_, _) => SavePreferences();
@@ -184,7 +247,7 @@ internal sealed class MainWindow : Form
         _copy.Click += (_, _) =>
         {
             Clipboard.SetText(_receiverKey.Text);
-            SetStatus("Pairing key copied. Enter it on the PC with the mouse.");
+            SetStatus("Code copied. On the mouse PC, choose 'I have the mouse' and enter it there.");
         };
         _toggle.Click += (_, _) => Toggle();
         _logLink.LinkClicked += (_, _) =>
@@ -219,6 +282,8 @@ internal sealed class MainWindow : Form
         _receiverKeyLabel.Visible = receiver;
         _receiverKey.Visible = receiver;
         _copy.Visible = receiver;
+        _receiverSteps.Visible = receiver;
+        _enterCode.Visible = receiver;
         _hostLabel.Visible = !receiver;
         _host.Visible = !receiver;
         _hostKeyLabel.Visible = !receiver;
@@ -228,8 +293,8 @@ internal sealed class MainWindow : Form
         _toggle.Text = _runCts is null ? (receiver ? "Start receiving" : "Connect mouse") : "Disconnect / Stop";
         _help.ForeColor = Muted;
         _help.Text = receiver
-            ? "On the other PC, enter this IP and pairing key. Then move its mouse across the screen edge."
-            : "When connected, move the mouse through the chosen edge. Move back across the opposite edge to return.";
+            ? "Both PCs show a code? Choose 'I have the mouse' on the PC with your physical mouse."
+            : "On the other PC, choose 'This PC receives the mouse' and click Start receiving before connecting.";
     }
 
     private void SavePreferences()
@@ -237,12 +302,12 @@ internal sealed class MainWindow : Form
         if (_initializing) return;
         _settings.Role = IsReceiver ? "Receiver" : "Controller";
         _settings.Host = _host.Text.Trim();
-        _settings.RemoteKey = _hostKey.Text.Trim();
+        _settings.RemoteKey = MousePeer.NormalizeKey(_hostKey.Text);
         _settings.PairingKey = _receiverKey.Text.Trim();
         _settings.ExitEdge = ExitRight ? "Right" : "Left";
         _settings.AutoConnect = _autoConnect.Checked;
         _settings.MinimizeToTray = _minimizeTray.Checked;
-        try { SettingsStore.Save(_settings); }
+        try { _saveSettings(_settings); }
         catch (Exception ex)
         {
             SettingsStore.Log("Save settings: " + ex.Message);
@@ -284,10 +349,11 @@ internal sealed class MainWindow : Form
             CancellationTokenSource lifetime = new();
             if (IsReceiver)
             {
-                _listener = new TcpListener(IPAddress.Any, MousePeer.Port);
+                _listener = _listenerFactory();
                 _listener.Start();
                 _runCts = lifetime;
-                _role.Enabled = false;
+                _controllerRole.Enabled = false;
+                _receiverRole.Enabled = false;
                 ShowMode();
                 SetStatus("Receiver started. Waiting for the mouse PC...");
                 _ = RunReceiverAsync(key, lifetime);
@@ -297,7 +363,8 @@ internal sealed class MainWindow : Form
                 string host = _host.Text.Trim();
                 if (host.Length == 0) throw new ArgumentException("Enter the receiver PC's LAN IP.");
                 _runCts = lifetime;
-                _role.Enabled = false;
+                _controllerRole.Enabled = false;
+                _receiverRole.Enabled = false;
                 _host.Enabled = false;
                 _hostKey.Enabled = false;
                 _edge.Enabled = false;
@@ -621,7 +688,8 @@ internal sealed class MainWindow : Form
         _capture?.Dispose();
         _capture = null;
         NativeMouse.ReleaseCursor();
-        _role.Enabled = true;
+        _controllerRole.Enabled = true;
+        _receiverRole.Enabled = true;
         _host.Enabled = true;
         _hostKey.Enabled = true;
         _edge.Enabled = true;
