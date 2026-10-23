@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>Cursor crossing an open screen edge</title>
+  <g fill="#2071E2" stroke="#2071E2" stroke-width="4" stroke-linecap="round">
+    <line x1="30" y1="6" x2="30" y2="15" />
+    <line x1="30" y1="53" x2="30" y2="58" />
+    <polygon stroke="none" points="16,18 16,45 24,37 31,49 38,45 31,33 44,33" />
+  </g>
+</svg>

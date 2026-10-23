@@ -12,7 +12,9 @@
     <RootNamespace>MouseWithOutBorders</RootNamespace>
   </PropertyGroup>
   <Target Name="GenerateIcon" BeforeTargets="PrepareForBuild"
-          Condition="'$(OS)' == 'Windows_NT' and !Exists('$(MSBuildProjectDirectory)\assets\app.ico')">
+          Condition="'$(OS)' == 'Windows_NT'"
+          Inputs="$(MSBuildProjectDirectory)\assets\app.svg;$(MSBuildProjectDirectory)\..\scripts\generate-icon.ps1"
+          Outputs="$(MSBuildProjectDirectory)\assets\app.ico">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\generate-icon.ps1&quot; &quot;$(MSBuildProjectDirectory)\assets\app.ico&quot;" />
   </Target>
 </Project>

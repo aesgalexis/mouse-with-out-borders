@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased — 0.1.3: Two-way mouse sharing and updates
+## 0.1.3 — Two-way mouse sharing and updates
 
+- Replace the app icon with a flat blue cursor crossing an open screen edge, generated from a transparent SVG at Windows icon sizes from 16 to 256 pixels.
 - Add a manual **Check & install updates** button with the current version, download progress and retryable errors.
 - Find the highest newer GitHub Release version, including published previews, and verify the installer's SHA-256 manifest before launching Setup.
 - Close the app only after the verified installer starts; reopen it after successful installation without restarting Windows or losing pairing settings.
