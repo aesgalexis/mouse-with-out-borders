@@ -17,18 +17,19 @@ internal sealed class MainWindow : Form
     private readonly AppSettings _settings;
     private readonly Action<AppSettings> _saveSettings;
     private readonly Func<TcpListener> _listenerFactory;
+    private readonly IAppUpdater _updater;
     private readonly bool _launchedAtStartup;
     private readonly RadioButton _controllerRole = new()
     {
         Name = "ControllerRole", Left = 28, Top = 119, Width = 232, Height = 50,
         Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
-        Text = "I have the mouse\nEnter the other PC's code", TabIndex = 0
+        Text = "Connect to other PC\nEnter the other PC's code", TabIndex = 0
     };
     private readonly RadioButton _receiverRole = new()
     {
         Name = "ReceiverRole", Left = 276, Top = 119, Width = 232, Height = 50,
         Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
-        Text = "This PC receives the mouse\nShow this PC's code", TabIndex = 1
+        Text = "Allow the connection\nShow this PC's code", TabIndex = 1
     };
     private readonly Label _receiverIp = new() { Left = 28, Top = 180, Width = 480, Height = 42 };
     private readonly Label _receiverKeyLabel = new() { Left = 28, Top = 231, Width = 480, Text = "THIS PC'S PAIRING CODE (8 CHARACTERS)" };
@@ -37,7 +38,7 @@ internal sealed class MainWindow : Form
     private readonly Label _receiverSteps = new()
     {
         Left = 28, Top = 302, Width = 480, Height = 46,
-        Text = "Click Start receiving. On the mouse PC, choose 'I have the mouse' and enter this PC's local IP and code."
+        Text = "Click Start receiving. On the other PC, choose 'Connect to other PC' and enter this IP and code. Both PCs can use their mice."
     };
     private readonly Button _enterCode = new()
     {
@@ -64,13 +65,23 @@ internal sealed class MainWindow : Form
     private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
     private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
     private readonly LinkLabel _logLink = new() { Left = 28, Top = 705, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
+    private readonly Button _update = new()
+    {
+        Name = "CheckForUpdates", Left = 232, Top = 701, Width = 276, Height = 36,
+        Text = "Check && install updates"
+    };
+    private readonly Label _updateStatus = new()
+    {
+        Name = "UpdateStatus", Left = 28, Top = 746, Width = 480, Height = 44
+    };
 
     private readonly NotifyIcon _tray;
     private CancellationTokenSource? _runCts;
+    private CancellationTokenSource? _updateCts;
     private TcpListener? _listener;
     private volatile MousePeer? _peer;
     private MouseCapture? _capture;
-    private bool _remote;
+    private MouseSharingSession? _session;
     private bool _shuttingDown;
     private bool _initializing = true;
     private bool _exitRequested;
@@ -82,15 +93,16 @@ internal sealed class MainWindow : Form
         : this(SettingsStore.Load(), SettingsStore.Save, launchedAtStartup) { }
 
     internal MainWindow(AppSettings settings, Action<AppSettings> saveSettings, bool launchedAtStartup = false,
-        Func<TcpListener>? listenerFactory = null)
+        Func<TcpListener>? listenerFactory = null, IAppUpdater? updater = null)
     {
         _settings = settings;
         _saveSettings = saveSettings;
         _listenerFactory = listenerFactory ?? (() => new TcpListener(IPAddress.Any, MousePeer.Port));
+        _updater = updater ?? new GitHubAppUpdater();
         _launchedAtStartup = launchedAtStartup;
         Text = "Mouse, with out borders";
         Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
-        ClientSize = new Size(536, 734);
+        ClientSize = new Size(536, 800);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -107,10 +119,10 @@ internal sealed class MainWindow : Form
         };
         Label subtitle = new()
         {
-            Text = "One mouse. Two Windows computers. Nothing else.",
+            Text = "All your mice and touchpads. Two Windows computers.",
             Left = 28, Top = 65, Width = 480, Height = 30, ForeColor = Muted
         };
-        Label modeLabel = new() { Text = "CHOOSE THIS PC'S ROLE", Left = 28, Top = 96, Width = 480 };
+        Label modeLabel = new() { Text = "PAIR THESE TWO PCS", Left = 28, Top = 96, Width = 480 };
         Label footer = new()
         {
             Text = "Private LAN only  •  TCP 42187  •  No keyboard sharing",
@@ -122,7 +134,8 @@ internal sealed class MainWindow : Form
             title, subtitle, modeLabel, _controllerRole, _receiverRole,
             _receiverIp, _receiverKeyLabel, _receiverKey, _copy, _receiverSteps, _enterCode,
             _hostLabel, _host, _hostKeyLabel, _hostKey, _edgeLabel, _edge,
-            _toggle, _autoConnect, _startup, _minimizeTray, _status, _help, footer, _logLink
+            _toggle, _autoConnect, _startup, _minimizeTray, _status, _help, footer, _logLink,
+            _update, _updateStatus
         ]);
 
         foreach (Label label in Controls.OfType<Label>())
@@ -160,7 +173,7 @@ internal sealed class MainWindow : Form
         _toggle.BackColor = Accent;
         _toggle.ForeColor = Color.FromArgb(13, 27, 42);
         _toggle.Font = new Font("Segoe UI Semibold", 11, FontStyle.Bold);
-        foreach (Button button in new[] { _copy, _enterCode })
+        foreach (Button button in new[] { _copy, _enterCode, _update })
         {
             button.FlatStyle = FlatStyle.Flat;
             button.BackColor = Surface;
@@ -249,9 +262,13 @@ internal sealed class MainWindow : Form
         _copy.Click += (_, _) =>
         {
             Clipboard.SetText(_receiverKey.Text);
-            SetStatus("Code copied. On the mouse PC, choose 'I have the mouse' and enter it there.");
+            SetStatus("Code copied. On the other PC, choose 'Connect to other PC' and enter it there.");
         };
         _toggle.Click += (_, _) => Toggle();
+        _update.Click += async (_, _) => await UpdateApplicationAsync();
+        _updateStatus.ForeColor = Muted;
+        _updateStatus.Font = new Font("Segoe UI", 9);
+        _updateStatus.Text = $"Version {_updater.CurrentVersion} • Manual updates from GitHub.";
         _logLink.LinkClicked += (_, _) =>
         {
             SettingsStore.Log("Diagnostics opened.");
@@ -265,6 +282,49 @@ internal sealed class MainWindow : Form
         _status.ForeColor = Accent;
         _status.Text = "Not connected.";
         ShowMode();
+    }
+
+    private async Task UpdateApplicationAsync()
+    {
+        if (_updateCts is not null || _shuttingDown) return;
+        using CancellationTokenSource lifetime = new(TimeSpan.FromMinutes(15));
+        _updateCts = lifetime;
+        _update.Enabled = false;
+        _updateStatus.Text = "Checking GitHub for updates...";
+        try
+        {
+            AppRelease? release = await _updater.CheckAsync(lifetime.Token);
+            lifetime.Token.ThrowIfCancellationRequested();
+            if (release is null)
+            {
+                _updateStatus.Text = $"Version {_updater.CurrentVersion} is up to date.";
+                return;
+            }
+            _updateStatus.Text = $"Downloading {release.Version}... 0%";
+            Progress<int> progress = new(percent =>
+            {
+                if (!_shuttingDown && _updateCts == lifetime)
+                    _updateStatus.Text = $"Downloading {release.Version}... {percent}% • Verifying SHA-256";
+            });
+            SavePreferences();
+            await _updater.InstallAsync(release, progress, lifetime.Token);
+            // Exit only after Windows successfully starts the verified installer.
+            if (!_shuttingDown) ExitApplication();
+        }
+        catch (OperationCanceledException)
+        {
+            if (!_shuttingDown) _updateStatus.Text = "Update timed out. Check your connection and try again.";
+        }
+        catch (Exception ex)
+        {
+            SettingsStore.Log("Manual update: " + ex.Message);
+            if (!_shuttingDown) _updateStatus.Text = "Update failed: " + ex.Message;
+        }
+        finally
+        {
+            _updateCts = null;
+            if (!_shuttingDown) _update.Enabled = true;
+        }
     }
 
     protected override void OnShown(EventArgs e)
@@ -294,9 +354,7 @@ internal sealed class MainWindow : Form
         _edge.Visible = !receiver;
         _toggle.Text = _runCts is null ? (receiver ? "Start receiving" : "Connect mouse") : "Disconnect / Stop";
         _help.ForeColor = Muted;
-        _help.Text = receiver
-            ? "Both PCs show a code? Choose 'I have the mouse' on the PC with your physical mouse."
-            : "On the other PC, choose 'This PC receives the mouse' and click Start receiving before connecting.";
+        _help.Text = "Once paired, every mouse and touchpad on either PC can cross the shared edge. The last device moved takes control.";
     }
 
     private void SavePreferences()
@@ -357,7 +415,7 @@ internal sealed class MainWindow : Form
                 _controllerRole.Enabled = false;
                 _receiverRole.Enabled = false;
                 ShowMode();
-                SetStatus("Receiver started. Waiting for the mouse PC...");
+                SetStatus("Listening. Waiting for the other PC...");
                 _ = RunReceiverAsync(key, lifetime);
             }
             else
@@ -388,43 +446,23 @@ internal sealed class MainWindow : Form
         while (!lifetime.IsCancellationRequested)
         {
             MousePeer? activePeer = null;
+            string? inputErrorStatus = null;
             try
             {
                 activePeer = await MousePeer.ConnectAsync(host, key, lifetime.Token).ConfigureAwait(false);
                 connectedOnce = true;
                 _peer = activePeer;
-                MousePeer installedPeer = activePeer;
-                Ui(() =>
-                {
-                    if (_runCts != lifetime || !ReferenceEquals(_peer, installedPeer)) return;
-                    try
-                    {
-                        _capture?.Dispose();
-                        _capture = new MouseCapture(Handle, OnMouseHook);
-                        SetStatus("Connected. Move the mouse beyond the " +
-                                  (ExitRight ? "right" : "left") + " edge.");
-                    }
-                    catch (Exception ex)
-                    {
-                        SetStatus("Mouse capture error: " + ex.Message);
-                        lifetime.Cancel();
-                    }
-                });
-
-                await activePeer.ReadLoopAsync(packet =>
-                {
-                    if (packet.Kind == "return")
-                        Ui(() => ReturnToThisPc(packet.Ratio));
-                }, lifetime.Token).ConfigureAwait(false);
+                await RunSharingAsync(activePeer, initiator: true, lifetime).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { break; }
             catch (Exception ex)
             {
                 SettingsStore.Log("Controller connection: " + ex.Message);
-                if (!connectedOnce)
+                if (ex is Win32Exception) inputErrorStatus = "Mouse input failed: " + ex.Message;
+                if (!connectedOnce || ex is NotSupportedException)
                 {
                     string message = "Could not connect: " + ex.Message;
-                    if (!_settings.AutoConnect)
+                    if (!_settings.AutoConnect || ex is NotSupportedException)
                     {
                         Ui(() =>
                         {
@@ -437,7 +475,7 @@ internal sealed class MainWindow : Form
                     Ui(() =>
                     {
                         if (_runCts == lifetime)
-                            SetStatus("Receiver not ready. Retrying connection...");
+                            SetStatus("Other PC not ready. Retrying connection...");
                     });
                 }
             }
@@ -451,10 +489,7 @@ internal sealed class MainWindow : Form
                 Ui(() =>
                 {
                     if (_runCts != lifetime) return;
-                    ReturnToThisPc(0.5);
-                    _capture?.Dispose();
-                    _capture = null;
-                    SetStatus("Connection lost. Trying to reconnect...");
+                    SetStatus(inputErrorStatus ?? "Connection lost. Trying to reconnect...");
                 });
             }
 
@@ -490,57 +525,10 @@ internal sealed class MainWindow : Form
                 {
                     if (lifetime.IsCancellationRequested) break;
                     _peer = peer;
-                    bool active = false;
-                    bool entersFromLeft = true;
-                    string disconnectedStatus = "Waiting for the mouse PC to reconnect...";
-                    Ui(() => SetStatus("PC connected. Waiting for its mouse to cross over."));
+                    string disconnectedStatus = "Waiting for the other PC to reconnect...";
                     try
                     {
-                        await peer.ReadLoopAsync(packet =>
-                        {
-                            Rectangle area = DesktopBounds();
-                            switch (packet.Kind)
-                            {
-                                case "enter":
-                                    if (!double.IsFinite(packet.Ratio)) break;
-                                    entersFromLeft = packet.Data >= 0;
-                                    active = true;
-                                    NativeMouse.SetCursorPos(entersFromLeft
-                                        ? Math.Min(area.Right - 1, area.Left + 5)
-                                        : Math.Max(area.Left, area.Right - 6),
-                                        RatioToY(area, packet.Ratio));
-                                    break;
-                                case "move" when active:
-                                    if (Math.Abs((long)packet.Dx) > 10000 || Math.Abs((long)packet.Dy) > 10000) break;
-                                    if (!NativeMouse.GetCursorPos(out var pos)) break;
-                                    long nextX = (long)pos.X + packet.Dx;
-                                    long nextY = (long)pos.Y + packet.Dy;
-                                    int x = (int)Math.Clamp(nextX, area.Left, area.Right - 1);
-                                    int y = (int)Math.Clamp(nextY, area.Top, area.Bottom - 1);
-                                    NativeMouse.SetCursorPos(x, y);
-                                    if ((entersFromLeft && packet.Dx < 0 && nextX < area.Left) ||
-                                        (!entersFromLeft && packet.Dx > 0 && nextX >= area.Right))
-                                    {
-                                        active = false;
-                                        ReleaseButtons();
-                                        double ratio = (double)(y - area.Top) / Math.Max(1, area.Height - 1);
-                                        peer.Queue(new MousePacket("return", Ratio: ratio));
-                                    }
-                                    break;
-                                case "button" when active:
-                                    if (packet.Flags is NativeMouse.LEFTDOWN or NativeMouse.LEFTUP
-                                        or NativeMouse.RIGHTDOWN or NativeMouse.RIGHTUP
-                                        or NativeMouse.MIDDLEDOWN or NativeMouse.MIDDLEUP
-                                        or NativeMouse.XDOWN or NativeMouse.XUP)
-                                        NativeMouse.Inject(packet.Flags, packet.Data);
-                                    break;
-                                case "wheel" when active:
-                                    if ((packet.Flags is NativeMouse.WHEEL or NativeMouse.HWHEEL) &&
-                                        packet.Data is >= -12000 and <= 12000)
-                                        NativeMouse.Inject(packet.Flags, packet.Data);
-                                    break;
-                            }
-                        }, lifetime.Token).ConfigureAwait(false);
+                        await RunSharingAsync(peer, initiator: false, lifetime).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
                     catch (Win32Exception ex)
@@ -555,8 +543,6 @@ internal sealed class MainWindow : Form
                     }
                     finally
                     {
-                        // Never leave a remote mouse button held after disconnect.
-                        if (active) ReleaseButtons();
                         if (ReferenceEquals(_peer, peer)) _peer = null;
                         Ui(() => { if (_runCts == lifetime) SetStatus(disconnectedStatus); });
                     }
@@ -576,7 +562,70 @@ internal sealed class MainWindow : Form
         }
     }
 
-    private static Rectangle DesktopBounds()
+    private async Task RunSharingAsync(MousePeer peer, bool initiator, CancellationTokenSource lifetime)
+    {
+        MouseSharingSession? session = null;
+        Exception? inputFailure = null;
+        Ui(() =>
+        {
+            if (_runCts != lifetime || !ReferenceEquals(_peer, peer)) return;
+            try
+            {
+                CloseSharingSession();
+                session = new MouseSharingSession(initiator, ExitRight, new WindowsMouseDesktop(),
+                    peer.Queue, ex => SettingsStore.Log("Release mouse button: " + ex.Message), SetStatus);
+                _session = session;
+                _capture = new MouseCapture(OnMouseHook);
+                session.Start();
+            }
+            catch (Exception ex)
+            {
+                Volatile.Write(ref inputFailure, ex);
+                CloseSharingSession();
+                SetStatus("Mouse capture error: " + ex.Message);
+                peer.Dispose();
+            }
+        });
+        try
+        {
+            await peer.ReadLoopAsync(packet => Ui(() =>
+            {
+                if (session is null || !ReferenceEquals(_session, session)) return;
+                try { session.Receive(packet); }
+                catch (Exception ex)
+                {
+                    Volatile.Write(ref inputFailure, ex);
+                    CloseSharingSession();
+                    SetStatus("Mouse input failed: " + ex.Message);
+                    peer.Dispose();
+                }
+            }), lifetime.Token).ConfigureAwait(false);
+        }
+        catch (Exception) when (Volatile.Read(ref inputFailure) is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(Volatile.Read(ref inputFailure)!);
+            throw;
+        }
+        finally
+        {
+            Ui(() =>
+            {
+                if (session is not null && ReferenceEquals(_session, session)) CloseSharingSession();
+            });
+        }
+    }
+
+    private void CloseSharingSession()
+    {
+        MouseSharingSession? session = _session;
+        _session = null;
+        try { session?.Dispose(); }
+        catch (Exception ex) { SettingsStore.Log("Release local mouse: " + ex.Message); }
+        _capture?.Dispose();
+        _capture = null;
+    }
+
+    private static Rectangle GetDesktopBounds()
     {
         Rectangle result = Screen.AllScreens[0].Bounds;
         foreach (Screen screen in Screen.AllScreens.Skip(1))
@@ -584,42 +633,54 @@ internal sealed class MainWindow : Form
         return result;
     }
 
-    private static int RatioToY(Rectangle area, double ratio) =>
-        area.Top + (int)Math.Round(Math.Clamp(ratio, 0, 1) * Math.Max(0, area.Height - 1));
-
-    private static void ReleaseButtons() =>
-        NativeMouse.ReleaseButtons(ex => SettingsStore.Log("Release mouse button: " + ex.Message));
+    private sealed class WindowsMouseDesktop : IMouseDesktop
+    {
+        public Rectangle Bounds => GetDesktopBounds();
+        public Point Cursor => NativeMouse.GetCursorPos(out var position)
+            ? new Point(position.X, position.Y) : throw new Win32Exception("Cannot read the mouse position.");
+        public void MoveCursor(Point position) => NativeMouse.MoveCursor(position, Bounds);
+        public void Inject(uint flags, int data) => NativeMouse.Inject(flags, data);
+    }
 
     private bool OnMouseHook(uint message, NativeMouse.HookInfo info)
     {
-        if (!_remote) return false;
-        uint flag = message switch
+        MouseSharingSession? session = _session;
+        if (session is null) return false;
+        try
         {
-            NativeMouse.WM_LBUTTONDOWN => NativeMouse.LEFTDOWN,
-            NativeMouse.WM_LBUTTONUP => NativeMouse.LEFTUP,
-            NativeMouse.WM_RBUTTONDOWN => NativeMouse.RIGHTDOWN,
-            NativeMouse.WM_RBUTTONUP => NativeMouse.RIGHTUP,
-            NativeMouse.WM_MBUTTONDOWN => NativeMouse.MIDDLEDOWN,
-            NativeMouse.WM_MBUTTONUP => NativeMouse.MIDDLEUP,
-            NativeMouse.WM_XBUTTONDOWN => NativeMouse.XDOWN,
-            NativeMouse.WM_XBUTTONUP => NativeMouse.XUP,
-            NativeMouse.WM_MOUSEWHEEL => NativeMouse.WHEEL,
-            NativeMouse.WM_MOUSEHWHEEL => NativeMouse.HWHEEL,
-            _ => 0
-        };
-        if (flag != 0)
-        {
+            if (message == NativeMouse.WM_MOUSEMOVE)
+            {
+                if (!NativeMouse.GetCursorPos(out var previous)) return session.IsRemote;
+                return session.PhysicalMove(new Point(previous.X, previous.Y), new Point(info.Position.X, info.Position.Y));
+            }
+            uint flag = message switch
+            {
+                NativeMouse.WM_LBUTTONDOWN => NativeMouse.LEFTDOWN,
+                NativeMouse.WM_LBUTTONUP => NativeMouse.LEFTUP,
+                NativeMouse.WM_RBUTTONDOWN => NativeMouse.RIGHTDOWN,
+                NativeMouse.WM_RBUTTONUP => NativeMouse.RIGHTUP,
+                NativeMouse.WM_MBUTTONDOWN => NativeMouse.MIDDLEDOWN,
+                NativeMouse.WM_MBUTTONUP => NativeMouse.MIDDLEUP,
+                NativeMouse.WM_XBUTTONDOWN => NativeMouse.XDOWN,
+                NativeMouse.WM_XBUTTONUP => NativeMouse.XUP,
+                NativeMouse.WM_MOUSEWHEEL => NativeMouse.WHEEL,
+                NativeMouse.WM_MOUSEHWHEEL => NativeMouse.HWHEEL,
+                _ => 0
+            };
+            if (flag == 0) return session.IsRemote;
             int data = flag is NativeMouse.WHEEL or NativeMouse.HWHEEL
                 ? (short)((info.MouseData >> 16) & 0xFFFF)
-                : flag is NativeMouse.XDOWN or NativeMouse.XUP
-                    ? (int)((info.MouseData >> 16) & 0xFFFF)
-                    : 0;
-
-            _peer?.Queue(new MousePacket(
-                flag is NativeMouse.WHEEL or NativeMouse.HWHEEL ? "wheel" : "button",
-                Data: data, Flags: flag));
+                : flag is NativeMouse.XDOWN or NativeMouse.XUP ? (int)((info.MouseData >> 16) & 0xFFFF) : 0;
+            return flag is NativeMouse.WHEEL or NativeMouse.HWHEEL
+                ? session.PhysicalWheel(flag, data) : session.PhysicalButton(flag, data);
         }
-        return true; // no local physical mouse actions while controlling remote PC
+        catch (Exception ex)
+        {
+            CloseSharingSession();
+            _peer?.Dispose();
+            SetStatus("Mouse sharing stopped: " + ex.Message);
+            return false;
+        }
     }
 
     protected override void WndProc(ref Message message)
@@ -629,58 +690,7 @@ internal sealed class MainWindow : Form
             ExitApplication();
             return;
         }
-        if (message.Msg == NativeMouse.WM_INPUT && _capture is not null)
-        {
-            var delta = NativeMouse.ReadRelativeDelta(message.LParam);
-            if (delta.HasValue) OnDelta(delta.Value.dx, delta.Value.dy);
-        }
         base.WndProc(ref message);
-    }
-
-    private void OnDelta(int dx, int dy)
-    {
-        MousePeer? peer = _peer;
-        if (peer is null || (dx == 0 && dy == 0)) return;
-        if (_remote)
-        {
-            peer.Queue(new MousePacket("move", Dx: dx, Dy: dy));
-            return;
-        }
-        if (ExitRight ? dx <= 0 : dx >= 0) return;
-        if (!NativeMouse.GetCursorPos(out var pos)) return;
-        Rectangle area = DesktopBounds();
-        if (ExitRight ? pos.X < area.Right - 2 : pos.X > area.Left + 1) return;
-        if (pos.Y < area.Top || pos.Y >= area.Bottom) return;
-
-        try
-        {
-            NativeMouse.HoldCursorAt(pos.X, pos.Y);
-            _remote = true;
-            double ratio = (double)(pos.Y - area.Top) / Math.Max(1, area.Height - 1);
-            if (!peer.Queue(new MousePacket("enter", Data: ExitRight ? 1 : -1, Ratio: ratio)))
-                ReturnToThisPc(ratio);
-            else
-                SetStatus("Mouse is on the other PC. Move back across the edge to return.");
-        }
-        catch (Exception ex)
-        {
-            ReturnToThisPc(0.5);
-            SetStatus("Mouse capture failed: " + ex.Message);
-        }
-    }
-
-    private void ReturnToThisPc(double ratio)
-    {
-        if (!_remote) return;
-        _remote = false;
-        NativeMouse.ReleaseCursor();
-        Rectangle area = DesktopBounds();
-        if (!double.IsFinite(ratio)) ratio = 0.5;
-        int x = ExitRight
-            ? Math.Max(area.Left, area.Right - 25)
-            : Math.Min(area.Right - 1, area.Left + 24);
-        NativeMouse.SetCursorPos(x, RatioToY(area, ratio));
-        SetStatus("Mouse returned. Move across the edge to switch again.");
     }
 
     private void Stop()
@@ -689,12 +699,9 @@ internal sealed class MainWindow : Form
         _runCts = null;
         _listener?.Stop();
         _listener = null;
+        CloseSharingSession();
         _peer?.Dispose();
         _peer = null;
-        _remote = false;
-        _capture?.Dispose();
-        _capture = null;
-        NativeMouse.ReleaseCursor();
         _controllerRole.Enabled = true;
         _receiverRole.Enabled = true;
         _host.Enabled = true;
@@ -721,6 +728,7 @@ internal sealed class MainWindow : Form
         }
 
         _shuttingDown = true;
+        _updateCts?.Cancel();
         Stop();
         _tray.Visible = false;
         _tray.Dispose();

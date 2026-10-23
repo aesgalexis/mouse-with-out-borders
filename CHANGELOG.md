@@ -1,10 +1,18 @@
 # Changelog
 
-## Unreleased — Installer updates
+## Unreleased — 0.1.3: Two-way mouse sharing and updates
 
+- Add a manual **Check & install updates** button with the current version, download progress and retryable errors.
+- Find the highest newer GitHub Release version, including published previews, and verify the installer's SHA-256 manifest before launching Setup.
+- Close the app only after the verified installer starts; reopen it after successful installation without restarting Windows or losing pairing settings.
 - Close the installed MWB automatically before updates, including when it is hidden in the notification area.
 - Request a clean exit first, then terminate older or unresponsive instances from the same installation and Windows session.
 - Apply the same shutdown when uninstalling and stop before changing files if MWB cannot be closed.
+- Fix the desktop context menu appearing when returning across the shared edge: release only buttons actually pressed by MWB, and ignore unmatched releases.
+- Capture mouse movement, clicks and scrolling on both PCs after one pairing; connecting/listening no longer determines which PC can share its mice.
+- Include Windows pointer input from built-in touchpads and other mouse devices, while filtering MWB's own input to prevent feedback.
+- Synchronize the shared screen edge, let local input reclaim control, and resolve simultaneous crossings and late packets.
+- Require both PCs to run the new two-way protocol, with an explicit update message when connecting to an older version.
 
 ## 0.1.2 — Clear pairing and connection recovery
 

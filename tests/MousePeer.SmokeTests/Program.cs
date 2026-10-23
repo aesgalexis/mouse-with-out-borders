@@ -13,6 +13,7 @@ internal static class Program
 
         TestPairingCodes();
         Console.WriteLine("PASS: short codes, input normalization, legacy keys and saved-code migration.");
+        MouseSharingTests.Run();
         byte[] key = MousePeer.ParseKey(MousePeer.NewKey());
         await TestAuthenticatedRoundTrip(key);
         Console.WriteLine("PASS: authenticated mouse data roundtrip.");
@@ -26,6 +27,8 @@ internal static class Program
         Console.WriteLine("PASS: stalled pairing response times out and its socket is closed.");
         await TestPairingCancellation(key);
         Console.WriteLine("PASS: user cancellation is preserved during pairing.");
+        await TestOldVersionRejected(key);
+        Console.WriteLine("PASS: an older app gets a clear update-both-PCs error and its socket is closed.");
         TestMouseInjection();
         Console.WriteLine("PASS: mouse events are encoded correctly and rejected input reports an error.");
         TestButtonReleaseFailures();
@@ -89,6 +92,7 @@ internal static class Program
         {
             TaskCompletionSource<MousePacket> gotMove = new(TaskCreationOptions.RunContinuationsAsynchronously);
             TaskCompletionSource<MousePacket> gotReply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<MousePacket> gotReverseMove = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             Task server = Task.Run(async () =>
             {
@@ -99,7 +103,8 @@ internal static class Program
                     if (packet.Kind == "move")
                     {
                         gotMove.TrySetResult(packet);
-                        peer.Queue(new MousePacket("return", Ratio: 0.4));
+                        peer.Queue(new MousePacket("move", Dx: -9, Dy: 13, Transfer: 42, Origin: 1));
+                        peer.Queue(new MousePacket("return", Ratio: 0.4, Transfer: packet.Transfer, Origin: packet.Origin));
                     }
                 }, timeout.Token);
             }, timeout.Token);
@@ -108,14 +113,17 @@ internal static class Program
             Task read = controller.ReadLoopAsync(packet =>
             {
                 if (packet.Kind == "return") gotReply.TrySetResult(packet);
+                if (packet.Kind == "move") gotReverseMove.TrySetResult(packet);
             }, timeout.Token);
 
-            if (!controller.Queue(new MousePacket("move", Dx: 26, Dy: -11)))
+            if (!controller.Queue(new MousePacket("move", Dx: 26, Dy: -11, Transfer: 41, Origin: 0)))
                 throw new Exception("Could not queue mouse move.");
 
             MousePacket move = await gotMove.Task.WaitAsync(timeout.Token);
             MousePacket reply = await gotReply.Task.WaitAsync(timeout.Token);
-            if (move.Dx != 26 || move.Dy != -11 || reply.Ratio != 0.4)
+            MousePacket reverse = await gotReverseMove.Task.WaitAsync(timeout.Token);
+            if (move.Dx != 26 || move.Dy != -11 || reply.Ratio != 0.4 || move.Transfer != 41 ||
+                reply.Transfer != 41 || reverse.Dx != -9 || reverse.Dy != 13 || reverse.Transfer != 42 || reverse.Origin != 1)
                 throw new Exception("Mouse packets were corrupted in transit.");
 
             timeout.Cancel();
@@ -168,7 +176,7 @@ internal static class Program
             using StreamWriter writer = new(socket.GetStream(), leaveOpen: true) { AutoFlush = true };
             if (afterProof)
             {
-                await writer.WriteLineAsync(("MOUSE1|" + new string('A', 48)).AsMemory(), watchdog.Token);
+                await writer.WriteLineAsync(("MOUSE2|" + new string('A', 48)).AsMemory(), watchdog.Token);
                 string? proof = await reader.ReadLineAsync(watchdog.Token);
                 if (proof is null || !proof.StartsWith("PROOF|", StringComparison.Ordinal))
                     throw new Exception("Controller did not send its pairing proof.");
@@ -221,6 +229,30 @@ internal static class Program
         }
     }
 
+    private static async Task TestOldVersionRejected(byte[] key)
+    {
+        using CancellationTokenSource watchdog = new(TimeSpan.FromSeconds(12));
+        TcpListener listener = new(IPAddress.Loopback, MousePeer.Port);
+        listener.Start();
+        try
+        {
+            Task<MousePeer> connecting = MousePeer.ConnectAsync("127.0.0.1", key, watchdog.Token);
+            using TcpClient socket = await listener.AcceptTcpClientAsync(watchdog.Token);
+            using StreamWriter writer = new(socket.GetStream(), leaveOpen: true) { AutoFlush = true };
+            using StreamReader reader = new(socket.GetStream(), leaveOpen: true);
+            await writer.WriteLineAsync(("MOUSE1|" + new string('A', 48)).AsMemory(), watchdog.Token);
+            try
+            {
+                using MousePeer _ = await connecting;
+                throw new Exception("Older protocol was accepted for two-way input.");
+            }
+            catch (NotSupportedException ex) when (ex.Message.Contains("both PCs", StringComparison.Ordinal)) { }
+            if (await reader.ReadLineAsync(watchdog.Token) is not null)
+                throw new Exception("Incompatible connection left its socket open.");
+        }
+        finally { listener.Stop(); }
+    }
+
     private static void TestMouseInjection()
     {
         NativeMouse.Inject(NativeMouse.WHEEL, -120, (count, inputs, size) =>
@@ -256,12 +288,17 @@ internal static class Program
     {
         List<(uint flags, int data)> attempts = [];
         List<Win32Exception> failures = [];
-        NativeMouse.ReleaseButtons(failures.Add, (_, inputs, _) =>
+        RemoteMouseButtons buttons = new();
+        foreach (var (flags, data) in new (uint, int)[] {
+            (NativeMouse.LEFTDOWN, 0), (NativeMouse.RIGHTDOWN, 0), (NativeMouse.MIDDLEDOWN, 0),
+            (NativeMouse.XDOWN, 1), (NativeMouse.XDOWN, 2) })
+            buttons.Apply(flags, data, (_, _) => { });
+        buttons.Release((flags, data) => NativeMouse.Inject(flags, data, (_, inputs, _) =>
         {
             attempts.Add((inputs[0].Data.Mouse.Flags, (int)inputs[0].Data.Mouse.MouseData));
             Marshal.SetLastPInvokeError(5);
             return 0;
-        });
+        }), failures.Add);
 
         (uint flags, int data)[] expected = [
             (NativeMouse.LEFTUP, 0), (NativeMouse.RIGHTUP, 0), (NativeMouse.MIDDLEUP, 0),

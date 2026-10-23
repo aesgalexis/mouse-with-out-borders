@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Drawing;
 using System.Runtime.InteropServices;
 
 namespace MouseWithOutBorders;
@@ -8,7 +9,6 @@ internal static class NativeMouse
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     internal static extern uint RegisterWindowMessage(string message);
 
-    internal const int WM_INPUT = 0x00FF;
     internal const uint WM_MOUSEMOVE = 0x0200;
     internal const uint WM_LBUTTONDOWN = 0x0201;
     internal const uint WM_LBUTTONUP = 0x0202;
@@ -33,33 +33,13 @@ internal static class NativeMouse
     internal const uint HWHEEL = 0x1000;
 
     private const int WH_MOUSE_LL = 14;
-    private const uint RIDEV_INPUTSINK = 0x00000100;
-    private const uint RID_INPUT = 0x10000003;
-    private const uint LLMHF_INJECTED = 0x00000001;
+    internal static readonly IntPtr InputMarker = (IntPtr)0x4D574232;
+    internal const uint MOVE = 0x0001;
+    internal const uint VIRTUALDESK = 0x4000;
+    internal const uint ABSOLUTE = 0x8000;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Point { public int X; public int Y; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct Rect { public int Left, Top, Right, Bottom; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RawDevice
-    {
-        public ushort UsagePage;
-        public ushort Usage;
-        public uint Flags;
-        public IntPtr Target;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RawHeader
-    {
-        public uint Type;
-        public uint Size;
-        public IntPtr Device;
-        public IntPtr WParam;
-    }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct HookInfo
@@ -98,12 +78,6 @@ internal static class NativeMouse
     internal delegate uint InputSender(uint count, Input[] input, int size);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool RegisterRawInputDevices([In] RawDevice[] devices, uint count, uint size);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint GetRawInputData(IntPtr handle, uint command, [Out] byte[] data, ref uint size, uint headerSize);
-
-    [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr SetWindowsHookEx(int hookId, HookProcedure procedure, IntPtr module, uint threadId);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -115,22 +89,15 @@ internal static class NativeMouse
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetModuleHandle(string? name);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool ClipCursor(ref Rect rect);
-
-    [DllImport("user32.dll", SetLastError = true, EntryPoint = "ClipCursor")]
-    private static extern bool ReleaseClip(IntPtr rect);
-
     [DllImport("user32.dll")]
     internal static extern bool GetCursorPos(out Point point);
-
-    [DllImport("user32.dll")]
-    internal static extern bool SetCursorPos(int x, int y);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, [In] Input[] input, int size);
 
-    internal static bool IsInjected(HookInfo info) => (info.Flags & LLMHF_INJECTED) != 0;
+    // Windows can synthesize pointer events for touchpads and accessibility
+    // devices. Ignore only our own input, rather than every injected event.
+    internal static bool IsOurInput(HookInfo info) => info.ExtraInfo == InputMarker;
 
     internal static IntPtr InstallHook(HookProcedure callback)
     {
@@ -139,48 +106,35 @@ internal static class NativeMouse
         return handle;
     }
 
-    internal static void RegisterMouse(IntPtr window)
-    {
-        RawDevice[] devices = [new() { UsagePage = 1, Usage = 2, Flags = RIDEV_INPUTSINK, Target = window }];
-        if (!RegisterRawInputDevices(devices, 1, (uint)Marshal.SizeOf<RawDevice>()))
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot register raw mouse input");
-    }
-
-    internal static (int dx, int dy)? ReadRelativeDelta(IntPtr handle)
-    {
-        // A RAWINPUT header is 24 bytes on x64 and 16 on x86.
-        int header = Marshal.SizeOf<RawHeader>();
-        byte[] bytes = new byte[128];
-        uint length = (uint)bytes.Length;
-        uint read = GetRawInputData(handle, RID_INPUT, bytes, ref length, (uint)header);
-        if (read == uint.MaxValue || read < header + 20 || BitConverter.ToUInt32(bytes, 0) != 0)
-            return null;
-        ushort mouseFlags = BitConverter.ToUInt16(bytes, header);
-        if ((mouseFlags & 1) != 0) return null; // absolute movement isn't a relative mouse delta
-        return (BitConverter.ToInt32(bytes, header + 12), BitConverter.ToInt32(bytes, header + 16));
-    }
-
-    internal static void HoldCursorAt(int x, int y)
-    {
-        Rect rect = new() { Left = x, Top = y, Right = x + 1, Bottom = y + 1 };
-        if (!ClipCursor(ref rect))
-            throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot hold local cursor");
-    }
-
-    internal static void ReleaseCursor() => ReleaseClip(IntPtr.Zero);
-
     internal static void Inject(uint flags, int data = 0) => Inject(flags, data, SendInput);
 
     // The sender boundary lets regression tests exercise Windows failures without
     // injecting real mouse events into the user's desktop.
     internal static void Inject(uint flags, int data, InputSender sendInput)
+        => Send(new MouseInput { Flags = flags, MouseData = unchecked((uint)data) }, sendInput);
+
+    internal static void MoveCursor(System.Drawing.Point position, Rectangle bounds, InputSender? sendInput = null)
     {
+        if (bounds.Width <= 0 || bounds.Height <= 0) throw new ArgumentException("Invalid desktop bounds.");
+        int x = Math.Clamp(position.X, bounds.Left, bounds.Right - 1) - bounds.Left;
+        int y = Math.Clamp(position.Y, bounds.Top, bounds.Bottom - 1) - bounds.Top;
+        Send(new MouseInput
+        {
+            Dx = (int)Math.Clamp(((long)x * 65536 + 32768) / bounds.Width, 0, 65535),
+            Dy = (int)Math.Clamp(((long)y * 65536 + 32768) / bounds.Height, 0, 65535),
+            Flags = MOVE | ABSOLUTE | VIRTUALDESK
+        }, sendInput ?? SendInput);
+    }
+
+    private static void Send(MouseInput mouse, InputSender sendInput)
+    {
+        mouse.ExtraInfo = InputMarker;
         Input[] input = [new()
         {
             Type = 0,
             Data = new InputUnion
             {
-                Mouse = new MouseInput { Flags = flags, MouseData = unchecked((uint)data) }
+                Mouse = mouse
             }
         }];
         if (sendInput(1, input, Marshal.SizeOf<Input>()) != 1)
@@ -193,17 +147,6 @@ internal static class NativeMouse
                 "An elevated application or secure desktop may be blocking it.");
         }
     }
-
-    internal static void ReleaseButtons(Action<Win32Exception> onError, InputSender? sendInput = null)
-    {
-        InputSender sender = sendInput ?? SendInput;
-        (uint flags, int data)[] releases = [(LEFTUP, 0), (RIGHTUP, 0), (MIDDLEUP, 0), (XUP, 1), (XUP, 2)];
-        foreach (var (flags, data) in releases)
-        {
-            try { Inject(flags, data, sender); }
-            catch (Win32Exception ex) { onError(ex); }
-        }
-    }
 }
 
 internal sealed class MouseCapture : IDisposable
@@ -213,11 +156,10 @@ internal sealed class MouseCapture : IDisposable
     private IntPtr _hook;
     private bool _disposed;
 
-    internal MouseCapture(IntPtr window, Func<uint, NativeMouse.HookInfo, bool> handler)
+    internal MouseCapture(Func<uint, NativeMouse.HookInfo, bool> handler)
     {
         _handler = handler;
         _callback = OnHook; // keep delegate alive while hook is installed
-        NativeMouse.RegisterMouse(window);
         _hook = NativeMouse.InstallHook(_callback);
     }
 
@@ -226,13 +168,13 @@ internal sealed class MouseCapture : IDisposable
         if (code >= 0 && !_disposed)
         {
             var info = Marshal.PtrToStructure<NativeMouse.HookInfo>(lp);
-            if (!NativeMouse.IsInjected(info) && _handler(unchecked((uint)wp.ToInt64()), info))
+            if (!NativeMouse.IsOurInput(info) && _handler(unchecked((uint)wp.ToInt64()), info))
                 return (IntPtr)1;
         }
         return NativeMouse.CallNextHookEx(_hook, code, wp, lp);
     }
 
-    internal void Dispose(bool releasingCursor)
+    public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
@@ -241,8 +183,5 @@ internal sealed class MouseCapture : IDisposable
             NativeMouse.UnhookWindowsHookEx(_hook);
             _hook = IntPtr.Zero;
         }
-        if (releasingCursor) NativeMouse.ReleaseCursor();
     }
-
-    public void Dispose() => Dispose(true);
 }

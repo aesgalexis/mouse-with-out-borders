@@ -1,0 +1,301 @@
+using System.ComponentModel;
+using System.Drawing;
+
+namespace MouseWithOutBorders;
+
+internal interface IMouseDesktop
+{
+    Rectangle Bounds { get; }
+    Point Cursor { get; }
+    void MoveCursor(Point position);
+    void Inject(uint flags, int data);
+}
+
+/// <summary>Only release buttons for which this connection successfully injected a down.</summary>
+internal sealed class RemoteMouseButtons
+{
+    private readonly HashSet<int> _held = [];
+    private static readonly (uint down, uint up, int data)[] Buttons = [
+        (NativeMouse.LEFTDOWN, NativeMouse.LEFTUP, 0),
+        (NativeMouse.RIGHTDOWN, NativeMouse.RIGHTUP, 0),
+        (NativeMouse.MIDDLEDOWN, NativeMouse.MIDDLEUP, 0),
+        (NativeMouse.XDOWN, NativeMouse.XUP, 1),
+        (NativeMouse.XDOWN, NativeMouse.XUP, 2)
+    ];
+
+    internal static int Identify(uint flags, int data, out bool down)
+    {
+        for (int i = 0; i < Buttons.Length; i++)
+        {
+            var button = Buttons[i];
+            if (data == button.data && (flags == button.down || flags == button.up))
+            {
+                down = flags == button.down;
+                return i;
+            }
+        }
+        down = false;
+        return -1;
+    }
+
+    internal void Apply(uint flags, int data, Action<uint, int> inject)
+    {
+        if (flags is NativeMouse.XDOWN or NativeMouse.XUP && data == 3)
+        {
+            Apply(flags, 1, inject);
+            Apply(flags, 2, inject);
+            return;
+        }
+        int button = Identify(flags, data, out bool down);
+        if (button < 0 || _held.Contains(button) == down) return;
+        inject(flags, data);
+        if (down) _held.Add(button);
+        else _held.Remove(button);
+    }
+
+    internal void Release(Action<uint, int> inject, Action<Win32Exception> onError)
+    {
+        foreach (int button in _held.Order().ToArray())
+        {
+            var release = Buttons[button];
+            try
+            {
+                inject(release.up, release.data);
+                _held.Remove(button);
+            }
+            catch (Win32Exception ex) { onError(ex); }
+        }
+    }
+}
+
+/// <summary>
+/// A symmetric session: the connection role only chooses who sends the layout.
+/// Input and ownership changes run on the UI thread on both PCs.
+/// </summary>
+internal sealed class MouseSharingSession : IDisposable
+{
+    private enum MouseLocation { Local, OtherPc, Receiving }
+    private readonly IMouseDesktop _desktop;
+    private readonly Func<MousePacket, bool> _send;
+    private readonly Action<Win32Exception> _onInputError;
+    private readonly Action<string> _status;
+    private readonly int _side;
+    private readonly RemoteMouseButtons _injectedButtons = new();
+    private readonly HashSet<int> _physicalButtons = [];
+    private readonly HashSet<int> _forwardedButtons = [];
+    private readonly HashSet<int> _suppressRelease = [];
+    private MouseLocation _location;
+    private long _clock;
+    private long _transfer;
+    private int _origin;
+    private Point _receivedPosition;
+    private bool _disposed;
+
+    internal bool Ready { get; private set; }
+    internal bool ExitRight { get; private set; }
+    internal bool IsRemote => _location == MouseLocation.OtherPc;
+    internal bool IsReceiving => _location == MouseLocation.Receiving;
+
+    internal MouseSharingSession(bool initiator, bool exitRight, IMouseDesktop desktop,
+        Func<MousePacket, bool> send, Action<Win32Exception> onInputError, Action<string> status)
+    {
+        _side = initiator ? 0 : 1;
+        Ready = initiator;
+        ExitRight = exitRight;
+        _desktop = desktop;
+        _send = send;
+        _onInputError = onInputError;
+        _status = status;
+    }
+
+    internal void Start()
+    {
+        if (_side == 0) Send(new MousePacket("layout", Data: ExitRight ? 1 : -1));
+        ReportReady();
+    }
+
+    private void Send(MousePacket packet)
+    {
+        if (!_send(packet)) throw new IOException("Other PC disconnected.");
+    }
+
+    private MousePacket Stamp(MousePacket packet) => packet with { Transfer = _transfer, Origin = _origin };
+
+    private double Ratio(int y) => Math.Clamp((double)(y - _desktop.Bounds.Top) / Math.Max(1, _desktop.Bounds.Height - 1), 0, 1);
+    private int Y(double ratio) => _desktop.Bounds.Top +
+        (int)Math.Round(Math.Clamp(ratio, 0, 1) * Math.Max(0, _desktop.Bounds.Height - 1));
+
+    private void ReportReady() => _status(Ready
+        ? "Connected. Any mouse or touchpad on either PC can cross the shared edge."
+        : "Connected. Waiting for the other PC's screen layout...");
+
+    private void ReleaseInjected() => _injectedButtons.Release(_desktop.Inject, _onInputError);
+
+    private void RestoreLocal(double ratio)
+    {
+        _suppressRelease.UnionWith(_forwardedButtons);
+        _forwardedButtons.Clear();
+        _location = MouseLocation.Local;
+        Rectangle area = _desktop.Bounds;
+        int inset = Math.Min(25, Math.Max(0, (area.Width - 1) / 2));
+        _desktop.MoveCursor(new Point(ExitRight ? area.Right - 1 - inset : area.Left + inset, Y(ratio)));
+        ReportReady();
+    }
+
+    private void TakeLocalControl(int y)
+    {
+        if (!IsReceiving) return;
+        ReleaseInjected();
+        _location = MouseLocation.Local;
+        Send(Stamp(new MousePacket("return", Ratio: Ratio(y))));
+        ReportReady();
+    }
+
+    internal bool PhysicalMove(Point previous, Point position)
+    {
+        if (_disposed || !Ready) return false;
+        int dx = position.X - previous.X;
+        int dy = position.Y - previous.Y;
+        bool stationary = dx == 0 && dy == 0;
+        if (stationary && (IsRemote || IsReceiving)) return IsRemote;
+        TakeLocalControl(position.Y);
+        if (IsRemote)
+        {
+            Send(Stamp(new MousePacket("move", Dx: dx, Dy: dy)));
+            return true;
+        }
+
+        Rectangle area = _desktop.Bounds;
+        bool crossing = ExitRight ? (dx > 0 || stationary) && position.X >= area.Right - 1
+            : (dx < 0 || stationary) && position.X <= area.Left;
+        // Finish a local click/drag on its original PC before handing off.
+        if (!crossing || _physicalButtons.Count != 0 || position.Y < area.Top || position.Y >= area.Bottom)
+            return false;
+
+        _transfer = checked(++_clock);
+        _origin = _side;
+        _location = MouseLocation.OtherPc;
+        // Suppressing moves at a central anchor also works for devices that only
+        // produce Windows pointer events, including built-in touchpads.
+        _desktop.MoveCursor(new Point(area.Left + area.Width / 2, area.Top + area.Height / 2));
+        Send(Stamp(new MousePacket("enter", Data: ExitRight ? 1 : -1, Ratio: Ratio(position.Y))));
+        _status("Mouse is on the other PC. Cross its shared edge to return.");
+        return true;
+    }
+
+    internal bool PhysicalButton(uint flags, int data)
+    {
+        if (_disposed) return false;
+        if (flags is NativeMouse.XDOWN or NativeMouse.XUP && data == 3)
+        {
+            bool first = PhysicalButton(flags, 1);
+            return PhysicalButton(flags, 2) || first;
+        }
+        int button = RemoteMouseButtons.Identify(flags, data, out bool down);
+        if (button < 0) return IsRemote;
+        if (down) _physicalButtons.Add(button);
+        else _physicalButtons.Remove(button);
+        if (!Ready) return false;
+        if (!down && _suppressRelease.Remove(button)) return true;
+        TakeLocalControl(_desktop.Cursor.Y);
+        if (!IsRemote) return false;
+        if (down) _forwardedButtons.Add(button);
+        else if (!_forwardedButtons.Remove(button)) return true;
+        Send(Stamp(new MousePacket("button", Data: data, Flags: flags)));
+        return true;
+    }
+
+    internal bool PhysicalWheel(uint flags, int delta)
+    {
+        if (_disposed || !Ready) return false;
+        TakeLocalControl(_desktop.Cursor.Y);
+        if (!IsRemote) return false;
+        Send(Stamp(new MousePacket("wheel", Data: delta, Flags: flags)));
+        return true;
+    }
+
+    internal void Receive(MousePacket packet)
+    {
+        if (_disposed) return;
+        if (packet.Kind == "layout")
+        {
+            if (_side == 1 && !Ready && packet.Data is 1 or -1)
+            {
+                ExitRight = packet.Data < 0;
+                Ready = true;
+                ReportReady();
+            }
+            return;
+        }
+        if (!Ready || packet.Transfer <= 0 || packet.Transfer == long.MaxValue || packet.Origin is < 0 or > 1)
+            return;
+        _clock = Math.Max(_clock, packet.Transfer);
+        if (packet.Kind == "enter")
+        {
+            if (packet.Origin == _side || packet.Data != (ExitRight ? -1 : 1) || !double.IsFinite(packet.Ratio))
+                return;
+            // Lamport order resolves simultaneous crossings identically at both
+            // ends. Old moves, clicks and returns cannot affect a later handoff.
+            if (packet.Transfer < _transfer || (packet.Transfer == _transfer && packet.Origin <= _origin))
+                return;
+            if (IsRemote) RestoreLocal(packet.Ratio);
+            ReleaseInjected();
+            _transfer = packet.Transfer;
+            _origin = packet.Origin;
+            _location = MouseLocation.Receiving;
+            Rectangle area = _desktop.Bounds;
+            int inset = Math.Min(5, Math.Max(0, (area.Width - 1) / 2));
+            _receivedPosition = new Point(ExitRight ? area.Right - 1 - inset : area.Left + inset, Y(packet.Ratio));
+            _desktop.MoveCursor(_receivedPosition);
+            _status("Mouse from the other PC is here. Your local mice and touchpad also work.");
+            return;
+        }
+        if (packet.Transfer != _transfer || packet.Origin != _origin) return;
+        if (packet.Kind == "return" && IsRemote && double.IsFinite(packet.Ratio))
+        {
+            RestoreLocal(packet.Ratio);
+            return;
+        }
+        if (!IsReceiving) return;
+        switch (packet.Kind)
+        {
+            case "move":
+                if (Math.Abs((long)packet.Dx) > 10000 || Math.Abs((long)packet.Dy) > 10000) return;
+                Rectangle area = _desktop.Bounds;
+                long nextX = (long)_receivedPosition.X + packet.Dx;
+                long nextY = (long)_receivedPosition.Y + packet.Dy;
+                _receivedPosition = new Point((int)Math.Clamp(nextX, area.Left, area.Right - 1),
+                    (int)Math.Clamp(nextY, area.Top, area.Bottom - 1));
+                if (ExitRight ? packet.Dx > 0 && nextX >= area.Right : packet.Dx < 0 && nextX < area.Left)
+                {
+                    ReleaseInjected();
+                    _location = MouseLocation.Local;
+                    // Leave room for this PC's own mouse to approach the edge;
+                    // it must not get stranded at a clamped boundary.
+                    int inset = Math.Min(25, Math.Max(0, (area.Width - 1) / 2));
+                    _receivedPosition = new Point(ExitRight ? area.Right - 1 - inset : area.Left + inset, _receivedPosition.Y);
+                    _desktop.MoveCursor(_receivedPosition);
+                    Send(Stamp(new MousePacket("return", Ratio: Ratio(_receivedPosition.Y))));
+                    ReportReady();
+                }
+                else _desktop.MoveCursor(_receivedPosition);
+                break;
+            case "button":
+                _injectedButtons.Apply(packet.Flags, packet.Data, _desktop.Inject);
+                break;
+            case "wheel":
+                if (packet.Flags is NativeMouse.WHEEL or NativeMouse.HWHEEL && packet.Data is >= -12000 and <= 12000)
+                    _desktop.Inject(packet.Flags, packet.Data);
+                break;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        ReleaseInjected();
+        if (IsRemote) RestoreLocal(0.5);
+        _location = MouseLocation.Local;
+    }
+}

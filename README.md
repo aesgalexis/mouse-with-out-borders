@@ -1,33 +1,45 @@
 # Mouse, with out borders
 
-**One mouse, two Windows computers.** A small app that makes the physical mouse plugged into one PC cross onto another PC on the same local network. Only mouse movement, buttons and wheel are shared.
+**All your mice and touchpads, two Windows computers.** Pair the PCs once and use the pointing devices attached to either PC across the shared screen edge. Only mouse movement, buttons and wheel are shared.
 
-- Switch by pushing through the **left or right edge** of the first PC's Windows desktop.
-- Return by pushing across the opposite edge of the second PC.
+- Cross the **left or right edge** using a mouse or touchpad on either PC.
+- Return across the shared edge, or move a local pointing device to reclaim that PC.
 - No keyboard, clipboard, files, remote desktop or account required.
 - Per-user Windows installer and uninstaller; also available as a portable executable.
 - Tray icon, option to launch with Windows, option to connect automatically, saved device pairing.
+- **Check & install updates** button with GitHub release downloads, SHA-256 verification and automatic app restart (from 0.1.3).
 - Authenticated connection with heartbeat detection and automatic reconnection after an established connection drops.
 
 **Project status: preview.** Windows compilation is automated; real two-PC interaction still needs hardware testing. This is not a production/stability guarantee.
 
 ## Install on both PCs
 
-Version **0.1.2** adds visible role buttons and 8-character codes. Update both PCs to use the new pairing setup.
+The current source prepares **0.1.3**, with two-way mouse sharing and automatic app shutdown during updates. **Update both PCs** to this build: 0.1.2 uses the older, one-way protocol. The app reports an update requirement instead of mixing the two protocols.
 
-1. Download MouseWithOutBorders-0.1.2-Setup.exe from the [v0.1.2 Release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.2), or download the MouseWithOutBorders-Windows-x64 artifact from [Actions](https://github.com/aesgalexis/mouse-without-borders/actions).
+1. For this unreleased build, download the **MouseWithOutBorders-Windows-x64** artifact from the preparation branch's [Actions builds](https://github.com/aesgalexis/mouse-without-borders/actions?query=branch%3Acodex%2Finstaller-auto-close). It contains MouseWithOutBorders-0.1.3-Setup.exe and the portable ZIP. The published [v0.1.2 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.2) retains the previous one-way behavior.
 2. Run the setup on **both Windows 10/11 x64 PCs**. No administrator rights are needed to install for the current user.
-3. On the PC you want to **receive** the mouse, click **This PC receives the mouse**, then **Start receiving**. Note the displayed local IP and **8-character pairing code**.
-4. On the PC with your physical mouse, click **I have the mouse**, enter the receiving PC's IP and code in the two editable fields, and select which edge leads to the second PC. Click **Connect mouse**. If both PCs are showing a code, click **Have the other PC's code? Enter it here** on the PC with the mouse.
-5. Push your physical mouse off that edge. The pointer now moves, clicks and scrolls on the second PC. Push through its opposite edge to come back.
+3. On either PC, click **Allow the connection**, then **Start receiving**. Note the displayed local IP and **8-character pairing code**.
+4. On the other PC, click **Connect to other PC**, enter that IP and code, and select which edge leads to the first PC. Click **Connect mouse**. If both PCs show a code, **Have the other PC's code? Enter it here** opens the editable connection fields.
+5. Use **any mouse or touchpad on either PC** to cross the shared edge. The opposite edge is configured automatically on the listening PC. Move back across the shared edge to return. Moving or clicking a local device takes that PC back from a remote mouse.
 
 For an assisted Windows installation or rollback, see [installation instructions](docs/INSTALLATION.md). For automated checks vs. pending two-PC tests, see [verification record](docs/TESTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-On the PC that will **receive the mouse**, you can run the checked-in `scripts/install.ps1 -Receiver` script after downloading it from the repo. On the controlling PC use `scripts/install.ps1` without the receiver switch. The script verifies the GitHub Release SHA-256 manifest and installs into the current Windows user's profile. It does not remotely control or install software on any other machine.
+The assisted `scripts/install.ps1` script still defaults to the published 0.1.2 release. Use the preview Setup.exe for two-way sharing until 0.1.3 is published. The script verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
 
-The pairing code has **8 letters and digits**, without ambiguous characters such as `0`, `O`, `1` or `I`. Lowercase input and pasted spaces or hyphens are accepted. It is saved per user under %LOCALAPPDATA%\MouseWithOutBorders and stays the same between launches. When upgrading from a version with 32-character local keys, the receiving PC generates and saves a new short code: enter that code again on the mouse PC. You can still enter a 32-character key to connect to a receiving PC running an older version. Never publish a pairing code, diagnostic log or settings file.
+The pairing code has **8 letters and digits**, without ambiguous characters such as `0`, `O`, `1` or `I`. Lowercase input and pasted spaces or hyphens are accepted. It is saved per user under %LOCALAPPDATA%\MouseWithOutBorders and stays the same between launches. Existing 8-character codes are retained during this update. Upgrading from 32-character local keys generates a short local code; the parser also accepts 32-character keys, but **both apps must support the new two-way protocol**. Never publish a pairing code, diagnostic log or settings file.
 
 The app runs in the **notification area** by default when its window is closed. Use its tray menu's **Exit** to actually quit. You can turn off "Keep running..." in Settings. Check "Start with Windows" to launch the program when you sign in, and "Connect / listen automatically" to restore its previous role.
+
+From version **0.1.3**, click **Check & install updates** at the bottom of the window
+to download and install the newest higher version from this repository's GitHub
+Releases, including published previews. The app shows download progress, verifies
+the release's SHA-256 manifest, then starts Setup with installation progress and
+exits. Setup reopens the app after a successful update and retains pairing and
+preferences. It never restarts Windows. Updates run only when you click the button.
+If the check, download or verification fails, the app stays open and you can retry.
+When run from a portable copy, this action installs the per-user application;
+it does not replace the portable executable. Older versions need one manual
+Setup installation to get the button.
 
 ## Network and security
 
@@ -45,7 +57,8 @@ Settings are stored in the signed-in user's LocalAppData folder; Windows account
 
 - Exactly **two PCs**, Windows 10/11 x64, with interactive user sessions.
 - Left/right screen arrangement; the outer edge is based on the Windows virtual desktop, so other monitors on a PC are taken into account. Complex non-rectangular display arrangements need additional testing.
-- Raw mouse deltas, wheel, primary and X buttons are supported.
+- Windows mouse/touchpad pointer movement, vertical/horizontal wheel, primary and X buttons are supported on both PCs.
+- A handoff waits for locally held buttons to be released so a local click/drag is not split between desktops.
 - Windows security boundaries (UAC prompts, locked/secure desktop, elevated applications) can restrict input injection.
 - Some mice, DPI settings, remote sessions, exclusive-input games, network policies and antivirus software may behave differently. Physical two-PC testing is still necessary.
 - The origin PC releases its cursor on disconnect or heartbeat timeout (normally within ~5 seconds).
@@ -53,7 +66,8 @@ Settings are stored in the signed-in user's LocalAppData folder; Windows account
 ## Troubleshooting
 
 - **Cannot connect:** confirm both PCs are on the same LAN, the receiver IP is correct, and Windows Firewall allows TCP 42187 on a private network.
-- **Both PCs show a code:** on the PC with the physical mouse, click **I have the mouse** or **Have the other PC's code? Enter it here**. Enter the receiving PC's local IP and code, and click **Connect mouse**.
+- **Both PCs show a code:** on either PC, click **Connect to other PC** or **Have the other PC's code? Enter it here**. Enter the listening PC's local IP and code, and click **Connect mouse**.
+- **Update both PCs:** two-way input requires the new version on both computers; 0.1.2 cannot use this protocol.
 - **Pairing rejected:** enter the receiving PC's current 8-character code again, especially after an upgrade.
 - **Cursor does not cross:** make sure both apps report connected, and move through the *outer* edge selected on the controlling PC.
 - **App disappeared:** check the Windows notification area (system tray); double-click its icon to reopen.

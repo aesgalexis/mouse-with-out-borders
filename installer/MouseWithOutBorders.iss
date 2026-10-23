@@ -1,6 +1,6 @@
 #define AppName "Mouse, with out borders"
 #ifndef AppVersion
-  #define AppVersion "0.1.2"
+  #define AppVersion "0.1.3"
 #endif
 
 [Setup]
@@ -41,9 +41,15 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\MouseWithOutBorders.exe"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\MouseWithOutBorders.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\MouseWithOutBorders.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\MouseWithOutBorders.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent; Check: not IsAppUpdate
+Filename: "{app}\MouseWithOutBorders.exe"; Flags: nowait; Check: IsAppUpdate
 
 [Code]
+function IsAppUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:MWBUPDATE|0}') = '1';
+end;
+
 function RegisterWindowMessage(MessageName: String): Cardinal;
   external 'RegisterWindowMessageW@user32.dll stdcall';
 function GetTopWindow(Parent: HWND): HWND;

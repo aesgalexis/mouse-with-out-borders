@@ -62,6 +62,10 @@ jobs:
         shell: pwsh
         run: dotnet run --project tests/MousePeer.SmokeTests/MousePeer.SmokeTests.csproj --configuration Release
 
+      - name: Test manual GitHub updater
+        shell: pwsh
+        run: dotnet run --project tests/Updater.SmokeTests/Updater.SmokeTests.csproj --configuration Release
+
       - name: Test pairing setup UI
         shell: pwsh
         run: dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj --configuration Release

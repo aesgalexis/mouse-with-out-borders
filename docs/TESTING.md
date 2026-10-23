@@ -40,6 +40,19 @@ This does not replace the physical two-PC checks below.
 
 ## Installer upgrade regression checks
 
+Run `dotnet run --project tests/Updater.SmokeTests/Updater.SmokeTests.csproj -c Release`
+to check numeric version selection, preview inclusion, pagination, missing assets,
+GitHub errors/rate limits, URL validation, SHA-256 verification, download progress,
+cancellation and failed-download cleanup. Installer launch is replaced with a
+callback so these tests never execute a downloaded program. Add `-- --live` for
+a read-only check against the real GitHub release list; add `--download` to also
+download and verify the latest installer, with process launch suppressed and
+temporary files removed afterward.
+
+The pairing UI suite also checks manual-only updates, displayed version, duplicate
+request prevention, retry after failure, preserving the listener when an update
+fails, exiting after successful handoff even in tray mode, and cancellation on exit.
+
 The next installer is checked with MWB open as a window, hidden in the
 notification area, and running the original v0.1.2 executable. Current builds
 must exit cleanly; v0.1.2 exercises the fallback for an older app that does not
@@ -49,6 +62,28 @@ GitHub Actions account; it refuses to overwrite a different local installation.
 
 The UI tests also send the installer exit message to a hidden window and verify
 that the app exits instead of remaining in the notification area.
+The installer smoke suite also passes `/MWBUPDATE=1` and verifies that the old
+tray process exits and the updated installed executable opens automatically.
+
+## Two-way input regression checks
+
+The transport suite now simulates paired desktops on both left/right layouts.
+It checks crossings and returns from both PCs, physical-mouse takeover,
+simultaneous crossings, generation-stamped late packets, local held buttons,
+remote held-button cleanup, and repeated edge crossings without any injected
+button event. Empty cleanup and unmatched right-button releases produce no input.
+The TCP checks preserve handoff IDs and origin fields in both directions and
+reject an older protocol with an update-both-PCs message.
+
+Windows input emitted by MWB is tagged and filtered so it cannot feed back to the
+other PC. Other Windows pointer events remain available to mice and touchpads.
+An optional native check can be run on an interactive Windows desktop:
+`dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj -c Release -- --native-pointer`.
+It sends three tagged test movements of two pixels through a real hook, verifies
+the pointer deltas and suppression, restores the original cursor position and
+does not press any buttons. This native check passed locally on 2026-10-23.
+Physical USB/Bluetooth/touchpad use across two updated PCs still needs acceptance
+testing; the simulator and native check do not replace that hardware test.
 
 Local verification on 2026-10-23: Inno Setup 6.7.3 compiled the candidate;
 updates from v0.1.2 in the tray and from the candidate both visible and hidden
@@ -65,6 +100,10 @@ restored afterward, with the pairing code unchanged.
 - [ ] After upgrading an existing receiver, its new 8-character code pairs and persists after restart
 - [ ] Moving right across PC A outer edge reaches PC B
 - [ ] Moving left across PC B edge returns to PC A
+- [ ] Crossings and returns also work with PC B's own mouse, without a second connection
+- [ ] Built-in laptop touchpads cross, click, scroll and return on either PC
+- [ ] Repeated crossings with no buttons pressed do not open desktop context menus
+- [ ] A local mouse takes control from remote input, including simultaneous movements/crossings
 - [ ] Primary, secondary, middle and X button clicks reach PC B
 - [ ] Vertical and horizontal wheel reach PC B
 - [ ] With inverted layout, left crossing from PC A reaches PC B and returns through right

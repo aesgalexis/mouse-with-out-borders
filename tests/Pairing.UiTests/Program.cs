@@ -72,6 +72,8 @@ internal static class Program
         if (saves == 0) throw new Exception("Pairing preferences were not saved.");
         Console.WriteLine("PASS: receiver, enter-code action, editable code, role persistence and switching while listening.");
         Console.WriteLine("PASS: installer exit request closes MWB from the notification area.");
+        UpdaterUiTests.Run();
+        if (args.Contains("--native-pointer", StringComparer.Ordinal)) TestNativePointer();
     }
 
     private static T Find<T>(Control parent, string name) where T : Control =>
@@ -79,6 +81,57 @@ internal static class Program
 
     [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, NativeMouse.Input[] inputs, int size);
+
+    private static void TestNativePointer()
+    {
+        if (!NativeMouse.GetCursorPos(out var original)) throw new Exception("Cannot read test cursor position.");
+        Point start = new(original.X, original.Y);
+        Rectangle monitor = Screen.FromPoint(start).Bounds;
+        Point target = new(start.X + (start.X < monitor.Right - 3 ? 2 : -2), start.Y);
+        IntPtr testMarker = (IntPtr)0x54455354;
+        List<Point> observed = [];
+        List<Point> previousPositions = [];
+        try
+        {
+            using MouseCapture capture = new((message, info) =>
+            {
+                if (message != NativeMouse.WM_MOUSEMOVE || info.ExtraInfo != testMarker) return false;
+                if (!NativeMouse.GetCursorPos(out var previous)) throw new Exception("Cannot read cursor position inside the hook.");
+                previousPositions.Add(new Point(previous.X, previous.Y));
+                observed.Add(new Point(info.Position.X, info.Position.Y));
+                return true;
+            });
+            for (int i = 0; i < 3; i++)
+            {
+                NativeMouse.MoveCursor(target, SystemInformation.VirtualScreen, (count, inputs, size) =>
+                {
+                    inputs[0].Data.Mouse.ExtraInfo = testMarker;
+                    return SendInput(count, inputs, size);
+                });
+                DateTime deadline = DateTime.UtcNow.AddSeconds(2);
+                while (observed.Count <= i && DateTime.UtcNow < deadline)
+                {
+                    Application.DoEvents();
+                    Thread.Sleep(5);
+                }
+                if (observed.Count != i + 1 || observed[i] != target || previousPositions[i] != start)
+                    throw new Exception($"Windows pointer events were lost or had incorrect coordinates: " +
+                        $"iteration={i}, count={observed.Count}, target={target}, start={start}, " +
+                        $"observed={string.Join(",", observed)}, previous={string.Join(",", previousPositions)}.");
+                if (!NativeMouse.GetCursorPos(out var current) || current.X != start.X || current.Y != start.Y)
+                    throw new Exception("Suppressing a forwarded pointer event did not keep the local cursor still.");
+            }
+        }
+        finally
+        {
+            NativeMouse.MoveCursor(start, SystemInformation.VirtualScreen);
+            Application.DoEvents();
+        }
+        Console.WriteLine("PASS: native pointer events reach the hook, retain deltas and leave the local cursor still; no buttons injected.");
+    }
 
     private static void SaveScreenshot(Form window, string[] args, string name)
     {

@@ -12,7 +12,9 @@ internal sealed record MousePacket(
     int Dy = 0,
     int Data = 0,
     double Ratio = 0,
-    uint Flags = 0);
+    uint Flags = 0,
+    long Transfer = 0,
+    int Origin = 0);
 
 /// <summary>
 /// One authenticated, two-way TCP connection. Each message has a monotonically
@@ -104,9 +106,9 @@ internal sealed class MousePeer : IDisposable
             await client.ConnectAsync(host, Port, connecting);
             var (reader, writer) = OpenStreams(client);
             string hello = await reader.ReadLineAsync(connecting) ?? throw new IOException("Receiver disconnected.");
-            if (!hello.StartsWith("MOUSE1|", StringComparison.Ordinal))
-                throw new IOException("Incompatible receiver.");
-            string nonce = hello["MOUSE1|".Length..];
+            if (!hello.StartsWith("MOUSE2|", StringComparison.Ordinal))
+                throw new NotSupportedException("Update MWB on both PCs to use two-way mouse sharing.");
+            string nonce = hello["MOUSE2|".Length..];
             if (nonce.Length != 48 || !nonce.All(Uri.IsHexDigit))
                 throw new IOException("Invalid receiver challenge.");
 
@@ -136,7 +138,7 @@ internal sealed class MousePeer : IDisposable
         {
             var (reader, writer) = OpenStreams(client);
             string nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
-            await writer.WriteLineAsync(("MOUSE1|" + nonce).AsMemory(), ct);
+            await writer.WriteLineAsync(("MOUSE2|" + nonce).AsMemory(), ct);
             string proof = await reader.ReadLineAsync(ct) ?? "";
             if (!proof.StartsWith("PROOF|", StringComparison.Ordinal) ||
                 !SameMac(key, "CLIENT|" + nonce, proof["PROOF|".Length..]))

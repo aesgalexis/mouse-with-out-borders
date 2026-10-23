@@ -31,12 +31,14 @@ public static class MwbInstallerSmokeNative {
 }
 '@
 
-function Invoke-Setup([string]$CaseName) {
+function Invoke-Setup([string]$CaseName, [switch]$AppUpdate) {
     $log = Join-Path $logDir ($CaseName + '.log')
-    $setup = Start-Process -FilePath $InstallerPath -ArgumentList @(
+    $setupArgs = @(
         '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
         ('/DIR="' + $testDir + '"'), ('/LOG="' + $log + '"')
-    ) -WindowStyle Hidden -PassThru
+    )
+    if ($AppUpdate) { $setupArgs += '/MWBUPDATE=1' }
+    $setup = Start-Process -FilePath $InstallerPath -ArgumentList $setupArgs -WindowStyle Hidden -PassThru
     if (-not $setup.WaitForExit(45000)) {
         $setup.Kill()
         throw "Setup stalled during $CaseName."
@@ -96,6 +98,25 @@ try {
         }
         Write-Output "PASS: automatic upgrade while MWB is running ($mode)."
     }
+
+    $updatingApp = Start-TestApp -Tray
+    [void](Invoke-Setup 'in-app-update' -AppUpdate)
+    if (-not $updatingApp.WaitForExit(5000)) { throw 'In-app update left the old app running.' }
+    $restartedApp = $null
+    for ($attempt = 0; $attempt -lt 80; $attempt++) {
+        $restartedApp = Get-Process -Name MouseWithOutBorders -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -ieq $app -and $_.Id -ne $updatingApp.Id } | Select-Object -First 1
+        if ($restartedApp -and $restartedApp.MainWindowHandle -ne 0) { break }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $restartedApp -or $restartedApp.MainWindowHandle -eq 0) {
+        throw 'In-app update did not reopen the updated application.'
+    }
+    if (-not [MwbInstallerSmokeNative]::PostMessage($restartedApp.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
+        throw 'Could not close the restarted test application.'
+    }
+    if (-not $restartedApp.WaitForExit(5000)) { throw 'The restarted test application did not exit.' }
+    Write-Output 'PASS: in-app update closes the tray app and reopens the installed executable.'
 
     $runningApp = Start-TestApp -Tray
     $uninstaller = Join-Path $testDir 'unins000.exe'

@@ -2,30 +2,48 @@
 
 This is a **mouse-only** Windows desktop application. The same executable runs on both PCs; each PC chooses its own role.
 
-Version **0.1.2** includes the role buttons and 8-character pairing codes described here. Update both PCs for the new pairing setup.
+The current preparation build is **0.1.3**. It adds two-way input: every mouse and touchpad on either PC can cross after pairing once. **Both PCs must be updated**; the 0.1.2 protocol is incompatible.
 
 **Status:** Windows x64 preview. Installation and transport tests run in GitHub Actions. Real pointer switching must still be checked on two physical machines. The current release is unsigned and Windows SmartScreen may warn before installation.
 
 ## Option A — easiest: Setup.exe
 
-1. Go to https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.2 .
-2. Download MouseWithOutBorders-0.1.2-Setup.exe on **both PCs**.
+1. Open the [preparation branch's Actions builds](https://github.com/aesgalexis/mouse-without-borders/actions?query=branch%3Acodex%2Finstaller-auto-close).
+2. Download the **MouseWithOutBorders-Windows-x64** artifact and use MouseWithOutBorders-0.1.3-Setup.exe on **both PCs**. This preparation build has not yet replaced the published 0.1.2 release.
 3. Run it on each PC. Installation is for the current Windows user, without an administrator password. You can also use the portable ZIP without installing anything.
-4. On the PC **without the shared physical mouse**: open Mouse, with out borders; click **This PC receives the mouse**; click **Start receiving**.
+4. On either PC: open Mouse, with out borders; click **Allow the connection**; click **Start receiving**.
 5. Note this PC's local IPv4 address and 8-character pairing code.
-6. On the PC **with the mouse**: click **I have the mouse**, enter the other PC's IP and code, and select **Right edge** or **Left edge** according to the physical layout. Click **Connect mouse**. The **Have the other PC's code? Enter it here** button also opens these fields, even if this PC is already listening.
-7. Move beyond the selected edge. The pointer should now move on the receiving PC. Move across the opposite receiving edge to return.
+6. On the other PC: click **Connect to other PC**, enter the first PC's IP and code, and select **Right edge** or **Left edge** according to the physical layout. Click **Connect mouse**. The **Have the other PC's code? Enter it here** button also opens these fields, even if this PC is already listening.
+7. Either PC's physical mice and touchpad can now cross the shared edge. The listening PC uses the opposite edge automatically. Return across the shared edge, or use a local device to reclaim its PC. No second pairing is needed.
 
 Keep both PCs powered on and connected to the same trusted private LAN.
 
-The next installer automatically closes the installed app before updating, even
+This installer automatically closes the installed app before updating, even
 when its window is hidden in the notification area. It requests a clean exit,
 then closes an older or unresponsive instance if necessary. Settings are retained.
 The same shutdown applies when uninstalling.
 
+## Manual updates from the app (0.1.3 and later)
+
+Click **Check & install updates** at the bottom of the app window. It checks this
+project's GitHub Releases, including previews, and installs only a higher version.
+Download progress and errors appear below the button. The SHA-256 manifest must
+match before Setup starts. The app then exits, Setup shows installation progress,
+and the updated app opens automatically. Pairing settings are retained; Windows
+is not restarted. Failed checks/downloads leave the app running and allow retry.
+If Setup itself fails, it displays the error; the existing app can be reopened.
+
+Updates require internet access to GitHub and are checked only on demand. A
+portable copy uses the same per-user Setup installation; its original file remains
+in place. Install 0.1.3 or later manually once to gain the button on an older app.
+
 Upgrading an existing receiver replaces its old 32-character key with a saved 8-character code. Enter the new code on the mouse PC once. Connections to older receivers still accept their 32-character keys.
 
 ## Option B — assisted install (Windows PowerShell)
+
+This script defaults to the published **0.1.2** release. For two-way sharing,
+use the preparation Setup.exe above until 0.1.3 is published; afterward pass
+`-Version 0.1.3` to the script.
 
 Download scripts/install.ps1 from the repository, inspect it, then run from PowerShell in the folder where you saved it:
 
