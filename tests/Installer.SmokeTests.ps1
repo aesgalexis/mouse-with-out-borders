@@ -32,6 +32,7 @@ public static class MwbInstallerSmokeNative {
 '@
 
 function Invoke-Setup([string]$CaseName, [switch]$AppUpdate) {
+    Write-Host "Starting installer case: $CaseName"
     $log = Join-Path $logDir ($CaseName + '.log')
     $setupArgs = @(
         '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',

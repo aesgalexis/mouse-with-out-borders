@@ -94,16 +94,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Test installation, running-app upgrades and uninstall
+        timeout-minutes: 5
         shell: pwsh
         run: |
           $installer = @(Get-ChildItem "dist/installer/*-Setup.exe") | Select-Object -First 1
           if (-not $installer) { throw "Setup.exe was not produced" }
           $legacy = 'dist/MouseWithOutBorders-0.1.2-Portable.zip'
-          Invoke-WebRequest -Uri 'https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.2/MouseWithOutBorders-0.1.2-Portable.zip' -OutFile $legacy
+          Write-Host 'Downloading the legacy upgrade fixture (60 second timeout).'
+          Invoke-WebRequest -Uri 'https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.2/MouseWithOutBorders-0.1.2-Portable.zip' -OutFile $legacy -TimeoutSec 60
           if ((Get-FileHash -LiteralPath $legacy -Algorithm SHA256).Hash -ine '876f9d244fe80d3cc81e0ff305533df4ea5e207ac8584db71b328d9bc856f4c3') {
             throw 'Legacy test fixture checksum mismatch.'
           }
           ./tests/Installer.SmokeTests.ps1 -InstallerPath $installer.FullName -LegacyPortablePath $legacy
+
+      - name: Upload installer diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MouseWithOutBorders-Installer-Logs
+          path: dist/installer-tests/*.log
+          if-no-files-found: ignore
 
       - name: Generate release checksums
         shell: pwsh
