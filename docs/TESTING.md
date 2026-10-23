@@ -128,3 +128,14 @@ File an issue at https://github.com/aesgalexis/mouse-without-borders/issues cont
 5. Steps to reproduce and whether disconnect/reconnect recovered.
 
 Attach sanitized diagnostic logs only when necessary. Do not commit personal pairing details, IP addresses from your home network, or log files.
+
+## Version 0.1.4 visual and cursor checks
+
+Session tests verify pointer visibility in both crossing directions, on returning,
+local takeover, simultaneous crossings and disposal. The optional interactive
+`--native-pointer` UI check now also verifies the actual transparent Windows cursor,
+foreground preservation, and cursor restoration after disposing the parking window.
+The native check passed locally on 2026-10-23. No system cursor scheme is modified.
+UI captures cover both pairing modes and the dark tray menu. The installer smoke
+suite creates a custom-named legacy desktop shortcut and checks its icon is migrated
+to the installed versioned ICO during every upgrade case.

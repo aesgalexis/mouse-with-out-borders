@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.4 — Cursor visibility, consistent icons and dark interface
+
+- Hide the parked cursor on the PC just left, on both crossing and returning. Restore it for local input, stopping and application exit.
+- Use a small non-activating cursor window rather than changing the Windows cursor scheme or display counter.
+- Load dedicated embedded icons for the application window, tray and header instead of relying on Explorer's cached associated icon.
+- Install a versioned icon file for shortcuts and refresh existing desktop shortcuts pointing to this installation, including custom shortcut names.
+- Apply explicit dark rendering to tray menus, selectors, checkboxes, role buttons and disabled/hover states; brighten secondary text and support scrolling on shorter screens.
+
 ## 0.1.3 — Two-way mouse sharing and updates
 
 - Replace the app icon with a flat blue cursor crossing an open screen edge, generated from a transparent SVG at Windows icon sizes from 16 to 256 pixels.

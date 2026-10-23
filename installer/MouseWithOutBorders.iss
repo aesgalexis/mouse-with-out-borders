@@ -1,6 +1,6 @@
 #define AppName "Mouse, with out borders"
 #ifndef AppVersion
-  #define AppVersion "0.1.3"
+  #define AppVersion "0.1.4"
 #endif
 
 [Setup]
@@ -13,7 +13,7 @@ AppPublisherURL=https://github.com/aesgalexis/mouse-without-borders
 AppSupportURL=https://github.com/aesgalexis/mouse-without-borders/issues
 DefaultDirName={localappdata}\Programs\MouseWithOutBorders
 DefaultGroupName={#AppName}
-UninstallDisplayIcon={app}\MouseWithOutBorders.exe
+UninstallDisplayIcon={app}\app-{#AppVersion}.ico
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
@@ -35,16 +35,54 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "..\dist\app\MouseWithOutBorders.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\MouseWithOutBorders\assets\app.ico"; DestDir: "{app}"; DestName: "app-{#AppVersion}.ico"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\{#AppName}"; Filename: "{app}\MouseWithOutBorders.exe"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\MouseWithOutBorders.exe"; Tasks: desktopicon
+Name: "{autoprograms}\{#AppName}"; Filename: "{app}\MouseWithOutBorders.exe"; IconFilename: "{app}\app-{#AppVersion}.ico"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\MouseWithOutBorders.exe"; IconFilename: "{app}\app-{#AppVersion}.ico"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\MouseWithOutBorders.exe"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent; Check: not IsAppUpdate
 Filename: "{app}\MouseWithOutBorders.exe"; Flags: nowait; Check: IsAppUpdate
 
 [Code]
+procedure RefreshDesktopIcons;
+var
+  Entry: TFindRec;
+  Shell, Shortcut: Variant;
+  ShortcutPath, AppPath: String;
+begin
+  AppPath := ExpandConstant('{app}\MouseWithOutBorders.exe');
+  Shell := CreateOleObject('WScript.Shell');
+  if FindFirst(ExpandConstant('{autodesktop}\*.lnk'), Entry) then
+  begin
+    try
+      repeat
+        try
+          ShortcutPath := ExpandConstant('{autodesktop}\') + Entry.Name;
+          Shortcut := Shell.CreateShortcut(ShortcutPath);
+          if CompareText(Shortcut.TargetPath, AppPath) = 0 then
+          begin
+            Shortcut.IconLocation := ExpandConstant('{app}\app-{#AppVersion}.ico') + ',0';
+            Shortcut.Save;
+            Log('Updated desktop shortcut icon: ' + Entry.Name);
+          end;
+        except
+          Log('Could not refresh desktop shortcut: ' + GetExceptionMessage);
+        end;
+      until not FindNext(Entry);
+    finally
+      FindClose(Entry);
+    end;
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RefreshDesktopIcons;
+end;
+
 function IsAppUpdate: Boolean;
 begin
   Result := ExpandConstant('{param:MWBUPDATE|0}') = '1';

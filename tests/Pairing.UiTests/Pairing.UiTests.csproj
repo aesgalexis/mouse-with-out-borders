@@ -8,6 +8,10 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../MouseWithOutBorders/assets/app.ico" LogicalName="MouseWithOutBorders.AppIcon.ico" />
+    <Compile Include="../../MouseWithOutBorders/AppBranding.cs" Link="AppBranding.cs" />
+    <Compile Include="../../MouseWithOutBorders/DarkTheme.cs" Link="DarkTheme.cs" />
+    <Compile Include="../../MouseWithOutBorders/HiddenPointerWindow.cs" Link="HiddenPointerWindow.cs" />
     <Compile Include="../../MouseWithOutBorders/GitHubAppUpdater.cs" Link="GitHubAppUpdater.cs" />
     <Compile Include="../../MouseWithOutBorders/MainWindow.cs" Link="MainWindow.cs" />
     <Compile Include="../../MouseWithOutBorders/AppSettings.cs" Link="AppSettings.cs" />

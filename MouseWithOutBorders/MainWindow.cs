@@ -6,11 +6,11 @@ namespace MouseWithOutBorders;
 
 internal sealed class MainWindow : Form
 {
-    private static readonly Color Background = Color.FromArgb(17, 23, 33);
-    private static readonly Color Surface = Color.FromArgb(27, 36, 49);
-    private static readonly Color Foreground = Color.FromArgb(235, 241, 249);
-    private static readonly Color Muted = Color.FromArgb(159, 176, 194);
-    private static readonly Color Accent = Color.FromArgb(90, 162, 255);
+    private static readonly Color Background = DarkTheme.Background;
+    private static readonly Color Surface = DarkTheme.Surface;
+    private static readonly Color Foreground = DarkTheme.Text;
+    private static readonly Color Muted = DarkTheme.Muted;
+    private static readonly Color Accent = DarkTheme.Accent;
     private static readonly uint InstallerExitMessage =
         NativeMouse.RegisterWindowMessage("MouseWithOutBorders.ExitForUpdate.79DBA1BD");
 
@@ -19,13 +19,13 @@ internal sealed class MainWindow : Form
     private readonly Func<TcpListener> _listenerFactory;
     private readonly IAppUpdater _updater;
     private readonly bool _launchedAtStartup;
-    private readonly RadioButton _controllerRole = new()
+    private readonly RadioButton _controllerRole = new DarkRoleButton()
     {
         Name = "ControllerRole", Left = 28, Top = 119, Width = 232, Height = 50,
         Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
         Text = "Connect to other PC\nEnter the other PC's code", TabIndex = 0
     };
-    private readonly RadioButton _receiverRole = new()
+    private readonly RadioButton _receiverRole = new DarkRoleButton()
     {
         Name = "ReceiverRole", Left = 276, Top = 119, Width = 232, Height = 50,
         Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
@@ -34,13 +34,13 @@ internal sealed class MainWindow : Form
     private readonly Label _receiverIp = new() { Left = 28, Top = 180, Width = 480, Height = 42 };
     private readonly Label _receiverKeyLabel = new() { Left = 28, Top = 231, Width = 480, Text = "THIS PC'S PAIRING CODE (8 CHARACTERS)" };
     private readonly TextBox _receiverKey = new() { Name = "LocalPairingCode", Left = 28, Top = 258, Width = 366, ReadOnly = true };
-    private readonly Button _copy = new() { Left = 402, Top = 255, Width = 106, Height = 34, Text = "Copy code" };
+    private readonly Button _copy = new DarkButton() { Left = 402, Top = 255, Width = 106, Height = 34, Text = "Copy code" };
     private readonly Label _receiverSteps = new()
     {
         Left = 28, Top = 302, Width = 480, Height = 46,
         Text = "Click Start receiving. On the other PC, choose 'Connect to other PC' and enter this IP and code. Both PCs can use their mice."
     };
-    private readonly Button _enterCode = new()
+    private readonly Button _enterCode = new DarkButton()
     {
         Name = "EnterOtherPcCode", Left = 28, Top = 354, Width = 480, Height = 36,
         Text = "Have the other PC's code? Enter it here"
@@ -56,16 +56,16 @@ internal sealed class MainWindow : Form
         AccessibleName = "Receiving PC's pairing code", TabIndex = 3
     };
     private readonly Label _edgeLabel = new() { Left = 28, Top = 318, Width = 480, Text = "WHICH EDGE LEADS TO THE OTHER PC?" };
-    private readonly ComboBox _edge = new() { Left = 28, Top = 345, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _edge = new DarkComboBox() { Name = "ScreenEdge", Left = 28, Top = 345, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
 
-    private readonly Button _toggle = new() { Name = "ToggleConnection", Left = 28, Top = 403, Width = 480, Height = 48 };
-    private readonly CheckBox _autoConnect = new() { Left = 28, Top = 468, Width = 480, Height = 25, Text = "Connect / listen automatically when opened" };
-    private readonly CheckBox _startup = new() { Left = 28, Top = 502, Width = 480, Height = 25, Text = "Start with Windows" };
-    private readonly CheckBox _minimizeTray = new() { Name = "MinimizeToTray", Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
+    private readonly Button _toggle = new DarkButton() { Name = "ToggleConnection", Left = 28, Top = 403, Width = 480, Height = 48 };
+    private readonly CheckBox _autoConnect = new DarkCheckBox() { Left = 28, Top = 468, Width = 480, Height = 25, Text = "Connect / listen automatically when opened" };
+    private readonly CheckBox _startup = new DarkCheckBox() { Left = 28, Top = 502, Width = 480, Height = 25, Text = "Start with Windows" };
+    private readonly CheckBox _minimizeTray = new DarkCheckBox() { Name = "MinimizeToTray", Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
     private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
     private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
     private readonly LinkLabel _logLink = new() { Left = 28, Top = 705, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
-    private readonly Button _update = new()
+    private readonly Button _update = new DarkButton()
     {
         Name = "CheckForUpdates", Left = 232, Top = 701, Width = 276, Height = 36,
         Text = "Check && install updates"
@@ -76,6 +76,9 @@ internal sealed class MainWindow : Form
     };
 
     private readonly NotifyIcon _tray;
+    private readonly Icon _appIcon = AppBranding.LoadIcon(SystemInformation.IconSize);
+    private readonly Icon _trayIcon = AppBranding.LoadIcon(SystemInformation.SmallIconSize);
+    private readonly PictureBox _brand = new() { Name = "AppLogo", Left = 28, Top = 24, Width = 48, Height = 48, SizeMode = PictureBoxSizeMode.Zoom };
     private CancellationTokenSource? _runCts;
     private CancellationTokenSource? _updateCts;
     private TcpListener? _listener;
@@ -101,8 +104,10 @@ internal sealed class MainWindow : Form
         _updater = updater ?? new GitHubAppUpdater();
         _launchedAtStartup = launchedAtStartup;
         Text = "Mouse, with out borders";
-        Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application;
+        Icon = _appIcon;
+        using (Icon logo = AppBranding.LoadIcon(new Size(64, 64))) _brand.Image = logo.ToBitmap();
         ClientSize = new Size(536, 800);
+        AutoScroll = true;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -114,13 +119,13 @@ internal sealed class MainWindow : Form
         Label title = new()
         {
             Text = "Mouse, with out borders",
-            Left = 28, Top = 20, Width = 480, Height = 42,
-            Font = new Font("Segoe UI Semibold", 21, FontStyle.Bold), ForeColor = Foreground
+            Left = 88, Top = 20, Width = 420, Height = 42,
+            Font = new Font("Segoe UI Semibold", 19, FontStyle.Bold), ForeColor = Foreground
         };
         Label subtitle = new()
         {
             Text = "All your mice and touchpads. Two Windows computers.",
-            Left = 28, Top = 65, Width = 480, Height = 30, ForeColor = Muted
+            Left = 88, Top = 65, Width = 420, Height = 30, ForeColor = Muted
         };
         Label modeLabel = new() { Text = "PAIR THESE TWO PCS", Left = 28, Top = 96, Width = 480 };
         Label footer = new()
@@ -131,7 +136,7 @@ internal sealed class MainWindow : Form
         };
 
         Controls.AddRange([
-            title, subtitle, modeLabel, _controllerRole, _receiverRole,
+            _brand, title, subtitle, modeLabel, _controllerRole, _receiverRole,
             _receiverIp, _receiverKeyLabel, _receiverKey, _copy, _receiverSteps, _enterCode,
             _hostLabel, _host, _hostKeyLabel, _hostKey, _edgeLabel, _edge,
             _toggle, _autoConnect, _startup, _minimizeTray, _status, _help, footer, _logLink,
@@ -166,6 +171,7 @@ internal sealed class MainWindow : Form
         {
             check.ForeColor = Foreground;
             check.BackColor = Background;
+            check.UseVisualStyleBackColor = false;
         }
 
         _toggle.FlatStyle = FlatStyle.Flat;
@@ -212,14 +218,19 @@ internal sealed class MainWindow : Form
         }
         catch (SocketException) { _receiverIp.Text = "Local IP: See ipconfig in Windows"; }
 
-        ContextMenuStrip trayMenu = new();
+        ContextMenuStrip trayMenu = new()
+        {
+            BackColor = Surface, ForeColor = Foreground,
+            Renderer = new DarkMenuRenderer(), ShowImageMargin = false,
+            Font = new Font("Segoe UI", 10)
+        };
         trayMenu.Items.Add("Open", null, (_, _) => ShowWindow());
         trayMenu.Items.Add("Stop mouse sharing", null, (_, _) => Stop());
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("Exit", null, (_, _) => ExitApplication());
         _tray = new NotifyIcon
         {
-            Icon = Icon,
+            Icon = _trayIcon,
             Text = "Mouse, with out borders",
             ContextMenuStrip = trayMenu,
             Visible = true
@@ -330,12 +341,22 @@ internal sealed class MainWindow : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
+        Height = Math.Min(Height, Screen.FromControl(this).WorkingArea.Height - 32);
         BeginInvoke((MethodInvoker)(() =>
         {
             if (_launchedAtStartup) Hide();
             if (_autoConnect.Checked && _runCts is null) Toggle();
         }));
     }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        int enabled = 1;
+        DwmSetWindowAttribute(Handle, 20, ref enabled, sizeof(int));
+    }
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
     private void ShowMode()
     {
@@ -635,6 +656,23 @@ internal sealed class MainWindow : Form
 
     private sealed class WindowsMouseDesktop : IMouseDesktop
     {
+        private HiddenPointerWindow? _hiddenPointer;
+        public void SetPointerHidden(bool hidden)
+        {
+            if (!hidden)
+            {
+                _hiddenPointer?.Dispose();
+                _hiddenPointer = null;
+            }
+            else if (_hiddenPointer is null)
+            {
+                Rectangle bounds = (Screen.PrimaryScreen ?? Screen.AllScreens[0]).Bounds;
+                Point anchor = new(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
+                _hiddenPointer = new HiddenPointerWindow(anchor);
+                _hiddenPointer.HidePointer();
+                MoveCursor(anchor);
+            }
+        }
         public Rectangle Bounds => GetDesktopBounds();
         public Point Cursor => NativeMouse.GetCursorPos(out var position)
             ? new Point(position.X, position.Y) : throw new Win32Exception("Cannot read the mouse position.");
@@ -734,4 +772,18 @@ internal sealed class MainWindow : Form
         _tray.Dispose();
         base.OnFormClosing(e);
     }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && !_iconsDisposed)
+        {
+            _iconsDisposed = true;
+            _tray?.Dispose();
+            _brand.Image?.Dispose();
+            _appIcon.Dispose();
+            _trayIcon.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+    private bool _iconsDisposed;
 }

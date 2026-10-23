@@ -10,6 +10,7 @@ $InstallerPath = (Resolve-Path -LiteralPath $InstallerPath).Path
 $LegacyPortablePath = (Resolve-Path -LiteralPath $LegacyPortablePath).Path
 $testDir = Join-Path $env:LOCALAPPDATA 'Programs\MouseWithOutBorders-InstallerCI'
 $app = Join-Path $testDir 'MouseWithOutBorders.exe'
+$shortcutPath = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'MWB Installer CI.lnk'
 $logDir = Join-Path $PSScriptRoot '..\dist\installer-tests'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $logDir = (Resolve-Path -LiteralPath $logDir).Path
@@ -79,6 +80,13 @@ function Start-TestApp([switch]$Tray) {
 
 try {
     [void](Invoke-Setup 'fresh-install')
+    $installedVersion = [Version](Get-Item -LiteralPath $app).VersionInfo.FileVersion
+    $expectedIconPath = Join-Path $testDir ('app-' + $installedVersion.ToString(3) + '.ico')
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = $app
+    $shortcut.IconLocation = $app + ',0'
+    $shortcut.Save()
 
     foreach ($mode in @('window', 'tray', 'legacy-tray')) {
         if ($mode -eq 'legacy-tray') {
@@ -88,6 +96,11 @@ try {
         }
         $runningApp = Start-TestApp -Tray:($mode -ne 'window')
         $log = Invoke-Setup ('upgrade-' + $mode)
+        $shortcut = $shell.CreateShortcut($shortcutPath)
+        if ($shortcut.IconLocation.Replace('"', '') -ine ($expectedIconPath + ',0') -or
+            -not (Test-Path -LiteralPath $expectedIconPath)) {
+            throw 'Setup did not migrate the existing desktop shortcut to its versioned icon.'
+        }
         if (-not $runningApp.WaitForExit(5000)) { throw "Setup left the $mode app running." }
         $logText = Get-Content -LiteralPath $log -Raw
         if (-not $logText.Contains('Requesting MWB exit before replacing its files.')) {
@@ -133,6 +146,7 @@ try {
     if (Test-Path -LiteralPath $app) { throw 'EXE still present after uninstall.' }
     Write-Output 'PASS: uninstall while MWB is running in the tray.'
 } finally {
+    Remove-Item -LiteralPath $shortcutPath -Force -ErrorAction SilentlyContinue
     Get-Process -Name MouseWithOutBorders -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -ieq $app } | Stop-Process -Force
 }

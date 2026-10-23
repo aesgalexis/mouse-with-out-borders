@@ -6,6 +6,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (args.Contains("--cursor-only", StringComparer.Ordinal)) { TestPointerVisibility(); return; }
         AppSettings settings = new() { MinimizeToTray = false };
         int saves = 0;
         using MainWindow window = new(settings, _ => saves++, listenerFactory:
@@ -73,7 +74,11 @@ internal static class Program
         Console.WriteLine("PASS: receiver, enter-code action, editable code, role persistence and switching while listening.");
         Console.WriteLine("PASS: installer exit request closes MWB from the notification area.");
         UpdaterUiTests.Run();
-        if (args.Contains("--native-pointer", StringComparer.Ordinal)) TestNativePointer();
+        if (args.Contains("--native-pointer", StringComparer.Ordinal))
+        {
+            TestNativePointer();
+            TestPointerVisibility();
+        }
     }
 
     private static T Find<T>(Control parent, string name) where T : Control =>
@@ -133,6 +138,63 @@ internal static class Program
         Console.WriteLine("PASS: native pointer events reach the hook, retain deltas and leave the local cursor still; no buttons injected.");
     }
 
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct CursorInfo
+    {
+        internal int Size, Flags;
+        internal IntPtr Cursor;
+        internal NativeMouse.Point Position;
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetCursorInfo(ref CursorInfo info);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(NativeMouse.Point position);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr window, int index);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, System.Text.StringBuilder name, int length);
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr window, out RectangleNative rect);
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RectangleNative { public int Left, Top, Right, Bottom; public override string ToString() => $"{Left},{Top},{Right},{Bottom}"; }
+
+    private static void TestPointerVisibility()
+    {
+        using MouseCapture keepStill = new((message, _) => message == NativeMouse.WM_MOUSEMOVE);
+        NativeMouse.GetCursorPos(out var original);
+        Point position = new(original.X, original.Y);
+        IntPtr foreground = GetForegroundWindow();
+        IntPtr hiddenCursor;
+        try
+        {
+            using (HiddenPointerWindow parked = new(position))
+            {
+                hiddenCursor = parked.HiddenCursor;
+                parked.HidePointer();
+                NativeMouse.MoveCursor(position, SystemInformation.VirtualScreen);
+                DateTime until = DateTime.UtcNow.AddMilliseconds(250);
+                while (DateTime.UtcNow < until) { Application.DoEvents(); Thread.Sleep(5); }
+                CursorInfo info = new() { Size = System.Runtime.InteropServices.Marshal.SizeOf<CursorInfo>() };
+                GetWindowRect(parked.Handle, out var actualBounds);
+                System.Text.StringBuilder hitClass = new(256);
+                GetClassName(WindowFromPoint(new NativeMouse.Point { X = position.X, Y = position.Y }), hitClass, 256);
+                if (!GetCursorInfo(ref info) || info.Cursor != hiddenCursor)
+                    throw new Exception($"The parked Windows cursor was not transparent: actual={info.Cursor}, hidden={hiddenCursor}, " +
+                        $"position={info.Position.X},{info.Position.Y}, bounds={parked.Bounds}, window={WindowFromPoint(info.Position)}, expectedWindow={parked.Handle}, " +
+                        $"visible={parked.Visible}, exStyle={GetWindowLong(parked.Handle, -20):X}, opacity={parked.Opacity}, actualBounds={actualBounds}, hitClass={hitClass}.");
+                if (GetForegroundWindow() != foreground)
+                    throw new Exception("Hiding the pointer stole the foreground window.");
+            }
+            CursorInfo restored = new() { Size = System.Runtime.InteropServices.Marshal.SizeOf<CursorInfo>() };
+            if (!GetCursorInfo(ref restored) || restored.Cursor == hiddenCursor)
+                throw new Exception("The Windows cursor was not restored after cleanup.");
+        }
+        finally { NativeMouse.MoveCursor(position, SystemInformation.VirtualScreen); Application.DoEvents(); }
+        Console.WriteLine("PASS: parked cursor is transparent without activating a window; cleanup restores it.");
+    }
+
     private static void SaveScreenshot(Form window, string[] args, string name)
     {
         if (args.Length != 2 || args[0] != "--screenshots") return;
@@ -140,5 +202,16 @@ internal static class Program
         using Bitmap bitmap = new(window.Width, window.Height);
         window.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
         bitmap.Save(Path.Combine(args[1], name));
+        if (name == "receiver.png")
+        {
+            var tray = (NotifyIcon)typeof(MainWindow).GetField("_tray",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(window)!;
+            ContextMenuStrip menu = tray.ContextMenuStrip!;
+            menu.CreateControl();
+            menu.Size = menu.GetPreferredSize(Size.Empty);
+            using Bitmap menuImage = new(menu.Width, menu.Height);
+            menu.DrawToBitmap(menuImage, new Rectangle(Point.Empty, menu.Size));
+            menuImage.Save(Path.Combine(args[1], "tray-menu.png"));
+        }
     }
 }

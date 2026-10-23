@@ -14,6 +14,7 @@ internal static class MouseSharingTests
         TestSimultaneousCrossings();
         TestHeldButtons();
         TestStalePackets();
+        TestPointerRestoration();
         TestPointerInput();
         Console.WriteLine("PASS: no phantom releases, both mice/directions, takeover, crossing races, stale packets and pointer input.");
     }
@@ -27,6 +28,12 @@ internal static class MouseSharingTests
     {
         public Rectangle Bounds { get; } = new(-500, 0, 1000, 700);
         public Point Cursor { get; set; } = new(0, 300);
+        internal bool PointerHidden;
+        public void SetPointerHidden(bool hidden)
+        {
+            PointerHidden = hidden;
+            if (hidden) Cursor = new Point(Bounds.Left + Bounds.Width / 2, Bounds.Top + Bounds.Height / 2);
+        }
         internal readonly List<(uint flags, int data)> Injected = [];
         public void MoveCursor(Point point) => Cursor = point;
         public void Inject(uint flags, int data) => Injected.Add((flags, data));
@@ -125,6 +132,8 @@ internal static class MouseSharingTests
         for (int side = 0; side < 2; side++)
         {
             pair.Cross(side);
+            Assert(pair.Desktops[side].PointerHidden && !pair.Desktops[1 - side].PointerHidden,
+                "The departed PC must hide its pointer while the destination stays visible.");
             Assert(pair.Sessions[side].IsRemote && pair.Sessions[1 - side].IsReceiving,
                 "A local mouse could not cross from one of the two PCs.");
             int direction = pair.Sessions[side].ExitRight ? 1 : -1;
@@ -142,6 +151,8 @@ internal static class MouseSharingTests
             pair.Move(side, -direction * 150);
             Assert(!pair.Sessions[side].IsRemote && !pair.Sessions[1 - side].IsReceiving,
                 "The mouse could not return from one of the two PCs.");
+            Assert(!pair.Desktops[side].PointerHidden && pair.Desktops[1 - side].PointerHidden,
+                "Returning must reveal the source and hide the cursor on the PC just left.");
         }
         for (int side = 0; side < 2; side++)
         {
@@ -167,6 +178,7 @@ internal static class MouseSharingTests
         pair.Move(1, 30);
         Assert(!pair.Sessions[0].IsRemote && !pair.Sessions[1].IsReceiving,
             "Moving the receiver's physical mouse did not restore local control.");
+        Assert(pair.Desktops.All(desktop => !desktop.PointerHidden), "Local takeover did not restore the source pointer.");
         pair.Cross(1);
         Assert(pair.Sessions[1].IsRemote && pair.Sessions[0].IsReceiving,
             "The second PC's mouse could not cross after taking control.");
@@ -185,6 +197,7 @@ internal static class MouseSharingTests
         Assert(pair.Sessions.Count(session => session.IsRemote) == 1 &&
             pair.Sessions.Count(session => session.IsReceiving) == 1,
             "Simultaneous crossings locked both PCs or lost both mice.");
+        Assert(pair.Desktops.Count(desktop => desktop.PointerHidden) == 1, "Simultaneous crossings hid the wrong number of pointers.");
         int side = pair.Sessions[0].IsRemote ? 0 : 1;
         pair.Move(side, pair.Sessions[side].ExitRight ? 10 : -10, 20);
         Assert(pair.Sessions[side].IsRemote && pair.Sessions[1 - side].IsReceiving,
@@ -230,6 +243,22 @@ internal static class MouseSharingTests
         Assert(pair.Desktops[1].Injected.Count == before, "A stale button packet generated a click.");
         pair.Sessions[0].Receive(oldEnter with { Kind = "button", Flags = NativeMouse.RIGHTDOWN });
         Assert(pair.Desktops[0].Injected.Count == 0, "An old packet affected the new mouse owner.");
+    }
+
+    private static void TestPointerRestoration()
+    {
+        using Pair pair = new();
+        pair.Cross(0);
+        pair.Move(0, -100);
+        Assert(pair.Desktops[1].PointerHidden, "Leaving the receiving PC left its ghost pointer visible.");
+        pair.Move(1, 10);
+        Assert(!pair.Desktops[1].PointerHidden, "Local movement did not reveal the hidden pointer.");
+        pair.Cross(1);
+        pair.Sessions[1].Dispose();
+        Assert(!pair.Desktops[1].PointerHidden, "Disconnect left the source pointer hidden.");
+        pair.Desktops[0].PointerHidden = true;
+        pair.Sessions[0].Dispose();
+        Assert(!pair.Desktops[0].PointerHidden, "Cleanup did not restore a hidden idle pointer.");
     }
 
     private static void TestPointerInput()

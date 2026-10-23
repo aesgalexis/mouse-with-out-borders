@@ -2,14 +2,14 @@
 
 This is a **mouse-only** Windows desktop application. The same executable runs on both PCs; each PC chooses its own role.
 
-The current release is **0.1.3**. It adds two-way input: every mouse and touchpad on either PC can cross after pairing once. **Both PCs must be updated**; the 0.1.2 protocol is incompatible.
+The current release is **0.1.4**. It adds two-way input: every mouse and touchpad on either PC can cross after pairing once. **Both PCs must be updated**; the 0.1.2 protocol is incompatible.
 
 **Status:** Windows x64 preview. Installation and transport tests run in GitHub Actions. Real pointer switching must still be checked on two physical machines. The current release is unsigned and Windows SmartScreen may warn before installation.
 
 ## Option A — easiest: Setup.exe
 
-1. Open the [v0.1.3 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.3).
-2. Download [MouseWithOutBorders-0.1.3-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.3/MouseWithOutBorders-0.1.3-Setup.exe) and use it on **both PCs**.
+1. Open the [v0.1.4 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.4).
+2. Download [MouseWithOutBorders-0.1.4-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.4/MouseWithOutBorders-0.1.4-Setup.exe) and use it on **both PCs**.
 3. Run it on each PC. Installation is for the current Windows user, without an administrator password. You can also use the portable ZIP without installing anything.
 4. On either PC: open Mouse, with out borders; click **Allow the connection**; click **Start receiving**.
 5. Note this PC's local IPv4 address and 8-character pairing code.
@@ -41,13 +41,13 @@ Upgrading an existing receiver replaces its old 32-character key with a saved 8-
 
 ## Option B — assisted install (Windows PowerShell)
 
-This script defaults to the published **0.1.3** release.
+This script defaults to the published **0.1.4** release.
 
 Download scripts/install.ps1 from the repository, inspect it, then run from PowerShell in the folder where you saved it:
 
     .\install.ps1
 
-This downloads release 0.1.3, verifies the SHA-256 manifest shipped with the release, installs without admin rights, then opens the application.
+This downloads release 0.1.4, verifies the SHA-256 manifest shipped with the release, installs without admin rights, then opens the application.
 
 On the **receiving PC**, use:
 

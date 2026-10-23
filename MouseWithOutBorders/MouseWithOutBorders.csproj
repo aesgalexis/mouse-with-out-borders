@@ -7,10 +7,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>assets\app.ico</ApplicationIcon>
-    <Version>0.1.3</Version>
+    <Version>0.1.4</Version>
     <AssemblyName>MouseWithOutBorders</AssemblyName>
     <RootNamespace>MouseWithOutBorders</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="assets\app.ico" LogicalName="MouseWithOutBorders.AppIcon.ico" />
+  </ItemGroup>
   <Target Name="GenerateIcon" BeforeTargets="PrepareForBuild"
           Condition="'$(OS)' == 'Windows_NT'"
           Inputs="$(MSBuildProjectDirectory)\assets\app.svg;$(MSBuildProjectDirectory)\..\scripts\generate-icon.ps1"
