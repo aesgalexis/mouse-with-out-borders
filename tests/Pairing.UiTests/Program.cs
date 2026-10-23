@@ -74,6 +74,8 @@ internal static class Program
         Console.WriteLine("PASS: receiver, enter-code action, editable code, role persistence and switching while listening.");
         Console.WriteLine("PASS: installer exit request closes MWB from the notification area.");
         UpdaterUiTests.Run();
+        KeyboardUiTests.Run(args.Length == 2 && args[0] == "--screenshots" ? args[1] : null);
+        if (args.Contains("--native-keyboard", StringComparer.Ordinal)) KeyboardUiTests.RunNative();
         if (args.Contains("--native-pointer", StringComparer.Ordinal))
         {
             TestNativePointer();

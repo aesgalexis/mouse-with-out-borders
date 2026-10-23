@@ -66,6 +66,10 @@ jobs:
         shell: pwsh
         run: dotnet run --project tests/Updater.SmokeTests/Updater.SmokeTests.csproj --configuration Release
 
+      - name: Test local keyboard remapping
+        shell: pwsh
+        run: dotnet run --project tests/Keyboard.SmokeTests/Keyboard.SmokeTests.csproj --configuration Release
+
       - name: Test pairing setup UI
         shell: pwsh
         run: dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj --configuration Release

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.5 — Local keyboard remapping
+
+- Add mouse-operated input/output key selectors, add/edit/remove controls, a pause switch, and an optional F11 → Backspace / F12 → Enter preset.
+- Save per-user mappings and restore them when MWB starts, independently of the mouse connection.
+- Handle key repeat, swaps, shared destinations and physical target keys; release injected keys when changing mappings, pausing or exiting.
+- Run keyboard capture on a separate message thread, filter generated input and report Windows injection failures without logging typed keys.
+- Display layout-specific OEM key names and distinguish Enter from Numpad Enter. Keyboard input remains local and is never sent to the other PC.
+
 ## 0.1.4 — Cursor visibility, consistent icons and dark interface
 
 - Hide the parked cursor on the PC just left, on both crossing and returning. Restore it for local input, stopping and application exit.

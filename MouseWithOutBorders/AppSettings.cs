@@ -13,6 +13,18 @@ internal sealed class AppSettings
     public string ExitEdge { get; set; } = "Right";
     public bool AutoConnect { get; set; }
     public bool MinimizeToTray { get; set; } = true;
+    public bool KeyRemappingEnabled { get; set; }
+    public List<KeyMapping> KeyMappings { get; set; } = [];
+
+    internal bool NormalizeKeyMappings()
+    {
+        List<KeyMapping> valid = (KeyMappings ?? []).Where(map => map is not null &&
+            KeyCatalog.Valid(map.Source) && KeyCatalog.Valid(map.Target) && map.Source != map.Target)
+            .GroupBy(map => map.Source).Select(group => group.First()).Take(128).ToList();
+        bool changed = KeyMappings is null || valid.Count != KeyMappings.Count;
+        if (changed) { KeyMappings = valid; KeyRemappingEnabled = false; }
+        return changed;
+    }
 
     internal bool UpgradePairingCode()
     {
@@ -54,6 +66,7 @@ internal static class SettingsStore
                 ? JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings()
                 : new AppSettings();
             bool upgraded = settings.UpgradePairingCode();
+            upgraded |= settings.NormalizeKeyMappings();
             if (!exists || upgraded)
             {
                 try { Save(settings); }

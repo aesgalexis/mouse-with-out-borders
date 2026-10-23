@@ -18,6 +18,8 @@ internal sealed class MainWindow : Form
     private readonly Action<AppSettings> _saveSettings;
     private readonly Func<TcpListener> _listenerFactory;
     private readonly IAppUpdater _updater;
+    private readonly Func<Action<string>, IKeyboardRemappingService> _keyboardFactory;
+    private IKeyboardRemappingService? _keyboard;
     private readonly bool _launchedAtStartup;
     private readonly RadioButton _controllerRole = new DarkRoleButton()
     {
@@ -64,7 +66,9 @@ internal sealed class MainWindow : Form
     private readonly CheckBox _minimizeTray = new DarkCheckBox() { Name = "MinimizeToTray", Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
     private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
     private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
-    private readonly LinkLabel _logLink = new() { Left = 28, Top = 705, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
+    private readonly LinkLabel _logLink = new() { Left = 28, Top = 802, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
+    private readonly Button _keys = new DarkButton { Name = "OpenKeyRemapping", Left = 28, Top = 701, Width = 194, Height = 36, Text = "Reasignar teclas..." };
+    private readonly Label _keyStatus = new() { Name = "KeyRemappingStatus", Left = 210, Top = 797, Width = 298, Height = 38 };
     private readonly Button _update = new DarkButton()
     {
         Name = "CheckForUpdates", Left = 232, Top = 701, Width = 276, Height = 36,
@@ -88,6 +92,7 @@ internal sealed class MainWindow : Form
     private bool _shuttingDown;
     private bool _initializing = true;
     private bool _exitRequested;
+    private bool _editingKeys;
 
     private bool IsReceiver => _receiverRole.Checked;
     private bool ExitRight => _edge.SelectedIndex != 1;
@@ -96,17 +101,19 @@ internal sealed class MainWindow : Form
         : this(SettingsStore.Load(), SettingsStore.Save, launchedAtStartup) { }
 
     internal MainWindow(AppSettings settings, Action<AppSettings> saveSettings, bool launchedAtStartup = false,
-        Func<TcpListener>? listenerFactory = null, IAppUpdater? updater = null)
+        Func<TcpListener>? listenerFactory = null, IAppUpdater? updater = null,
+        Func<Action<string>, IKeyboardRemappingService>? keyboardFactory = null)
     {
         _settings = settings;
         _saveSettings = saveSettings;
         _listenerFactory = listenerFactory ?? (() => new TcpListener(IPAddress.Any, MousePeer.Port));
         _updater = updater ?? new GitHubAppUpdater();
+        _keyboardFactory = keyboardFactory ?? (error => new KeyboardRemappingService(error));
         _launchedAtStartup = launchedAtStartup;
         Text = "Mouse, with out borders";
         Icon = _appIcon;
         using (Icon logo = AppBranding.LoadIcon(new Size(64, 64))) _brand.Image = logo.ToBitmap();
-        ClientSize = new Size(536, 800);
+        ClientSize = new Size(536, 840);
         AutoScroll = true;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -140,7 +147,7 @@ internal sealed class MainWindow : Form
             _receiverIp, _receiverKeyLabel, _receiverKey, _copy, _receiverSteps, _enterCode,
             _hostLabel, _host, _hostKeyLabel, _hostKey, _edgeLabel, _edge,
             _toggle, _autoConnect, _startup, _minimizeTray, _status, _help, footer, _logLink,
-            _update, _updateStatus
+            _update, _updateStatus, _keys, _keyStatus
         ]);
 
         foreach (Label label in Controls.OfType<Label>())
@@ -179,7 +186,7 @@ internal sealed class MainWindow : Form
         _toggle.BackColor = Accent;
         _toggle.ForeColor = Color.FromArgb(13, 27, 42);
         _toggle.Font = new Font("Segoe UI Semibold", 11, FontStyle.Bold);
-        foreach (Button button in new[] { _copy, _enterCode, _update })
+        foreach (Button button in new[] { _copy, _enterCode, _update, _keys })
         {
             button.FlatStyle = FlatStyle.Flat;
             button.BackColor = Surface;
@@ -226,6 +233,7 @@ internal sealed class MainWindow : Form
         };
         trayMenu.Items.Add("Open", null, (_, _) => ShowWindow());
         trayMenu.Items.Add("Stop mouse sharing", null, (_, _) => Stop());
+        trayMenu.Items.Add("Reasignar teclas...", null, (_, _) => EditKeyMappings());
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("Exit", null, (_, _) => ExitApplication());
         _tray = new NotifyIcon
@@ -277,6 +285,10 @@ internal sealed class MainWindow : Form
         };
         _toggle.Click += (_, _) => Toggle();
         _update.Click += async (_, _) => await UpdateApplicationAsync();
+        _keys.Click += (_, _) => EditKeyMappings();
+        _keyStatus.ForeColor = Muted;
+        _keyStatus.Font = new Font("Segoe UI", 9);
+        _keyStatus.Text = "Reasignación de teclas desactivada.";
         _updateStatus.ForeColor = Muted;
         _updateStatus.Font = new Font("Segoe UI", 9);
         _updateStatus.Text = $"Version {_updater.CurrentVersion} • Manual updates from GitHub.";
@@ -344,9 +356,66 @@ internal sealed class MainWindow : Form
         Height = Math.Min(Height, Screen.FromControl(this).WorkingArea.Height - 32);
         BeginInvoke((MethodInvoker)(() =>
         {
+            ApplyKeyMappings();
             if (_launchedAtStartup) Hide();
             if (_autoConnect.Checked && _runCts is null) Toggle();
         }));
+    }
+
+    private void ApplyKeyMappings()
+    {
+        if (_shuttingDown) return;
+        try
+        {
+            _settings.KeyMappings ??= [];
+            KeyCatalog.Validate(_settings.KeyMappings);
+            if (_settings.KeyRemappingEnabled && _settings.KeyMappings.Count != 0)
+                _keyboard ??= _keyboardFactory(error => Ui(() =>
+                {
+                    IKeyboardRemappingService? failed = _keyboard;
+                    _keyboard = null;
+                    failed?.Dispose();
+                    _settings.KeyRemappingEnabled = false;
+                    _keyStatus.Text = "Reasignación pausada: " + error;
+                    SettingsStore.Log("Key remapping failed: " + error);
+                }));
+            _keyboard?.Configure(_settings.KeyRemappingEnabled, _settings.KeyMappings);
+            _keyStatus.Text = _settings.KeyRemappingEnabled && _settings.KeyMappings.Count != 0
+                ? $"{_settings.KeyMappings.Count} reasignación(es) activas en este PC."
+                : "Reasignación de teclas desactivada.";
+        }
+        catch (Exception ex) { _keyStatus.Text = "No se pudo activar: " + ex.Message; }
+    }
+
+    private void EditKeyMappings()
+    {
+        if (_editingKeys || _shuttingDown) return;
+        _editingKeys = true;
+        bool previousEnabled = _settings.KeyRemappingEnabled;
+        List<KeyMapping> previousMappings = _settings.KeyMappings?.ToList() ?? [];
+        string? errorMessage = null;
+        try
+        {
+            _keyboard?.Configure(false, []);
+            using KeyRemappingDialog dialog = new(previousEnabled, previousMappings);
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            _settings.KeyMappings = dialog.Mappings.ToList();
+            _settings.KeyRemappingEnabled = dialog.RemappingEnabled;
+            try { _saveSettings(_settings); }
+            catch
+            {
+                _settings.KeyMappings = previousMappings;
+                _settings.KeyRemappingEnabled = previousEnabled;
+                throw;
+            }
+        }
+        catch (Exception ex) { errorMessage = "No se pudo guardar: " + ex.Message; }
+        finally
+        {
+            _editingKeys = false;
+            ApplyKeyMappings();
+            if (errorMessage is not null) _keyStatus.Text = errorMessage;
+        }
     }
 
     protected override void OnHandleCreated(EventArgs e)
@@ -766,6 +835,8 @@ internal sealed class MainWindow : Form
         }
 
         _shuttingDown = true;
+        _keyboard?.Dispose();
+        _keyboard = null;
         _updateCts?.Cancel();
         Stop();
         _tray.Visible = false;
@@ -777,6 +848,8 @@ internal sealed class MainWindow : Form
     {
         if (disposing && !_iconsDisposed)
         {
+            _keyboard?.Dispose();
+            _keyboard = null;
             _iconsDisposed = true;
             _tray?.Dispose();
             _brand.Image?.Dispose();

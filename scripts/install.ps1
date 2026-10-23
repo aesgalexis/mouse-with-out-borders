@@ -4,7 +4,7 @@
 # the release's published SHA-256 manifest, and runs Inno Setup locally.
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.4',
+    [string]$Version = '0.1.5',
     [switch]$Receiver,
     [switch]$NoLaunch
 )
@@ -21,7 +21,7 @@ if ([Environment]::OSVersion.Version.Major -lt 10) {
     throw 'Windows 10 or 11 is required.'
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    throw 'Version must look like 0.1.4.'
+    throw 'Version must look like 0.1.5.'
 }
 
 $repo = 'aesgalexis/mouse-without-borders'

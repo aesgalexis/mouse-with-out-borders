@@ -5,7 +5,8 @@
 - Cross the **left or right edge** using a mouse or touchpad on either PC.
 - Return across the shared edge, or move a local pointing device to reclaim that PC.
 - Hide the inactive parked pointer, restoring it when returning or using a local device.
-- No keyboard, clipboard, files, remote desktop or account required.
+- Local key-to-key remapping with input/output selectors. Keyboard input is not shared over the network.
+- No clipboard, file sharing, remote desktop or account required.
 - Per-user Windows installer and uninstaller; also available as a portable executable.
 - Tray icon, option to launch with Windows, option to connect automatically, saved device pairing.
 - **Check & install updates** button with GitHub release downloads, SHA-256 verification and automatic app restart (from 0.1.3).
@@ -15,9 +16,9 @@
 
 ## Install on both PCs
 
-The current release is **0.1.4**, with hidden inactive cursors, consistent app/desktop icons and a readable dark interface. Install it on both PCs for all visual improvements. It shares the two-way protocol with 0.1.3; 0.1.2 uses the incompatible older, one-way protocol.
+The current release is **0.1.5**, adding local key-to-key remapping with mouse-operated selectors. Install it on both PCs for all visual improvements. It shares the two-way protocol with 0.1.3; 0.1.2 uses the incompatible older, one-way protocol.
 
-1. Download [MouseWithOutBorders-0.1.4-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.4/MouseWithOutBorders-0.1.4-Setup.exe) from the [v0.1.4 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.4). A portable ZIP and SHA-256 checksums are also available there.
+1. Download [MouseWithOutBorders-0.1.5-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.5/MouseWithOutBorders-0.1.5-Setup.exe) from the [v0.1.5 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.5). A portable ZIP and SHA-256 checksums are also available there.
 2. Run the setup on **both Windows 10/11 x64 PCs**. No administrator rights are needed to install for the current user.
 3. On either PC, click **Allow the connection**, then **Start receiving**. Note the displayed local IP and **8-character pairing code**.
 4. On the other PC, click **Connect to other PC**, enter that IP and code, and select which edge leads to the first PC. Click **Connect mouse**. If both PCs show a code, **Have the other PC's code? Enter it here** opens the editable connection fields.
@@ -25,7 +26,7 @@ The current release is **0.1.4**, with hidden inactive cursors, consistent app/d
 
 For an assisted Windows installation or rollback, see [installation instructions](docs/INSTALLATION.md). For automated checks vs. pending two-PC tests, see [verification record](docs/TESTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-The assisted `scripts/install.ps1` script defaults to 0.1.4. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
+The assisted `scripts/install.ps1` script defaults to 0.1.5. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
 
 The pairing code has **8 letters and digits**, without ambiguous characters such as `0`, `O`, `1` or `I`. Lowercase input and pasted spaces or hyphens are accepted. It is saved per user under %LOCALAPPDATA%\MouseWithOutBorders and stays the same between launches. Existing 8-character codes are retained during this update. Upgrading from 32-character local keys generates a short local code; the parser also accepts 32-character keys, but **both apps must support the new two-way protocol**. Never publish a pairing code, diagnostic log or settings file.
 
@@ -41,6 +42,10 @@ If the check, download or verification fails, the app stays open and you can ret
 When run from a portable copy, this action installs the per-user application;
 it does not replace the portable executable. Older versions need one manual
 Setup installation to get the button.
+
+## Local keyboard remapping
+
+Open **Reasignar teclas...** from the main window or tray. Select the input key and output key with the mouse, click **Añadir**, then **Guardar y aplicar**. No Enter or Backspace key is needed to configure it. Add, change or remove mappings, or use the optional F11 → Backspace / F12 → Enter preset. Mappings are disabled by default, saved per user, and run while MWB is open independently of the mouse connection. The editor pauses remapping; Cancel restores the previous configuration. **Start with Windows** resumes saved mappings after sign-in. Elevated applications require MWB at the same privilege level; secure screens and firmware-only keys are not remapped. Keys and typed text are never transmitted or logged.
 
 ## Network and security
 

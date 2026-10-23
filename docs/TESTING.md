@@ -139,3 +139,13 @@ The native check passed locally on 2026-10-23. No system cursor scheme is modifi
 UI captures cover both pairing modes and the dark tray menu. The installer smoke
 suite creates a custom-named legacy desktop shortcut and checks its icon is migrated
 to the installed versioned ICO during every upgrade case.
+## Version 0.1.5 local keyboard remapping
+
+Keyboard.SmokeTests covers selection validation, JSON persistence, Enter/Backspace,
+repeat, swaps, shared destinations, real target-key collisions, disabling and
+cleanup, including a failed release. UI tests configure both keys using only
+selectors/buttons, reject duplicate inputs, edit/remove, save/cancel, restart and
+verify independence from the mouse connection. The optional `--native-keyboard`
+UI test exercises the real global keyboard hook and Windows SendInput; a separate
+test hook intercepts all generated Enter/Backspace events before user windows.
+This native check passed locally on 2026-10-23. No typed text is logged.

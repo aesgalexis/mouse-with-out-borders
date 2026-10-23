@@ -8,6 +8,10 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../MouseWithOutBorders/KeyboardRemapping.cs" Link="KeyboardRemapping.cs" />
+    <Compile Include="../../MouseWithOutBorders/NativeKeyboard.cs" Link="NativeKeyboard.cs" />
+    <Compile Include="../../MouseWithOutBorders/KeyboardRemappingService.cs" Link="KeyboardRemappingService.cs" />
+    <Compile Include="../../MouseWithOutBorders/KeyRemappingDialog.cs" Link="KeyRemappingDialog.cs" />
     <EmbeddedResource Include="../../MouseWithOutBorders/assets/app.ico" LogicalName="MouseWithOutBorders.AppIcon.ico" />
     <Compile Include="../../MouseWithOutBorders/AppBranding.cs" Link="AppBranding.cs" />
     <Compile Include="../../MouseWithOutBorders/DarkTheme.cs" Link="DarkTheme.cs" />
