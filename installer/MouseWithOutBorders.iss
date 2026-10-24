@@ -1,6 +1,6 @@
 #define AppName "Mouse, with out borders"
 #ifndef AppVersion
-  #define AppVersion "0.1.8"
+  #define AppVersion "0.1.9"
 #endif
 
 [Setup]

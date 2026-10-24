@@ -12,6 +12,15 @@ This file distinguishes automated checks from hardware testing. Do not claim a f
 
 CI checks only what it runs. A successful build does not prove smooth mouse interaction.
 
+## Version 0.1.9 English-interface verification (2026-10-24)
+
+Release compilation passed without warnings or errors. Keyboard smoke tests and
+the complete UI suite passed. The remapping editor and notification-area menu
+were rendered and visually inspected with English labels, help, preset and save
+controls. A source scan found no remaining Spanish application-authored strings
+in the application or current installation instructions. OEM keys show their
+layout's printable symbols instead of localized Windows descriptive names.
+
 ## Version 0.1.8 receiver and focus regressions (2026-10-24)
 
 The independent mouse-input loop is tested with the application's UI thread

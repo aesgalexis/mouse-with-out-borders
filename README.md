@@ -16,9 +16,9 @@
 
 ## Install on both PCs
 
-The current release is **0.1.8**, keeping mouse input independent of the MWB window so minimizing or dragging it cannot stall remote control. It also hardens focus preservation, cursor recovery and held-button handling. It includes automatic startup/reconnection, administrator restart and local key-to-key remapping. Install it on both PCs for all improvements. It shares the two-way protocol with 0.1.3; 0.1.2 uses the incompatible older, one-way protocol.
+The current release is **0.1.9**, with consistent English menus, key-remapping controls, status and validation messages. It includes the 0.1.8 receiver responsiveness, focus and input-recovery fixes, automatic startup/reconnection and administrator restart. Install it on both PCs for all improvements. It shares the two-way protocol with 0.1.3; 0.1.2 uses the incompatible older, one-way protocol.
 
-1. Download [MouseWithOutBorders-0.1.8-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.8/MouseWithOutBorders-0.1.8-Setup.exe) from the [v0.1.8 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.8). A portable ZIP and SHA-256 checksums are also available there.
+1. Download [MouseWithOutBorders-0.1.9-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.9/MouseWithOutBorders-0.1.9-Setup.exe) from the [v0.1.9 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.9). A portable ZIP and SHA-256 checksums are also available there.
 2. Run the setup on **both Windows 10/11 x64 PCs**. No administrator rights are needed to install for the current user.
 3. On either PC, click **Allow the connection**, then **Start receiving**. Note the displayed local IP and **8-character pairing code**.
 4. On the other PC, click **Connect to other PC**, enter that IP and code, and select which edge leads to the first PC. Click **Connect mouse**. If both PCs show a code, **Have the other PC's code? Enter it here** opens the editable connection fields.
@@ -26,7 +26,7 @@ The current release is **0.1.8**, keeping mouse input independent of the MWB win
 
 For an assisted Windows installation or rollback, see [installation instructions](docs/INSTALLATION.md). For automated checks vs. pending two-PC tests, see [verification record](docs/TESTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-The assisted `scripts/install.ps1` script defaults to 0.1.8. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
+The assisted `scripts/install.ps1` script defaults to 0.1.9. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
 
 The pairing code has **8 letters and digits**, without ambiguous characters such as `0`, `O`, `1` or `I`. Lowercase input and pasted spaces or hyphens are accepted. It is saved per user under %LOCALAPPDATA%\MouseWithOutBorders and stays the same between launches. Existing 8-character codes are retained during this update. Upgrading from 32-character local keys generates a short local code; the parser also accepts 32-character keys, but **both apps must support the new two-way protocol**. Never publish a pairing code, diagnostic log or settings file.
 
@@ -45,7 +45,7 @@ Setup installation to get the button.
 
 ## Local keyboard remapping
 
-Open **Reasignar teclas...** from the main window or tray. Select the input key and output key with the mouse, click **Añadir**, then **Guardar y aplicar**. No Enter or Backspace key is needed to configure it. Add, change or remove mappings, or use the optional F11 → Backspace / F12 → Enter preset. Mappings are disabled by default, saved per user, and run while MWB is open independently of the mouse connection. The editor pauses remapping; Cancel restores the previous configuration. **Start with Windows** resumes saved mappings after sign-in. Elevated applications require MWB at the same privilege level; secure screens and firmware-only keys are not remapped. Keys and typed text are never transmitted or logged.
+Open **Remap keys...** from the main window or tray. Select the input key and output key with the mouse, click **Add**, then **Save and apply**. No Enter or Backspace key is needed to configure it. Add, change or remove mappings, or use the optional F11 → Backspace / F12 → Enter preset. Mappings are disabled by default, saved per user, and run while MWB is open independently of the mouse connection. The editor pauses remapping; Cancel restores the previous configuration. **Start with Windows** resumes saved mappings after sign-in. Elevated applications require MWB at the same privilege level; secure screens and firmware-only keys are not remapped. Keys and typed text are never transmitted or logged.
 
 ## Network and security
 

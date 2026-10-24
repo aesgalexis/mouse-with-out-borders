@@ -70,7 +70,7 @@ internal sealed class MainWindow : Form
     private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
     private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
     private readonly LinkLabel _logLink = new() { Left = 28, Top = 802, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
-    private readonly Button _keys = new DarkButton { Name = "OpenKeyRemapping", Left = 28, Top = 701, Width = 194, Height = 36, Text = "Reasignar teclas..." };
+    private readonly Button _keys = new DarkButton { Name = "OpenKeyRemapping", Left = 28, Top = 701, Width = 194, Height = 36, Text = "Remap keys..." };
     private readonly Label _keyStatus = new() { Name = "KeyRemappingStatus", Left = 210, Top = 797, Width = 298, Height = 38 };
     private readonly Button _update = new DarkButton()
     {
@@ -262,7 +262,7 @@ internal sealed class MainWindow : Form
         };
         trayMenu.Items.Add("Open", null, (_, _) => ShowWindow());
         trayMenu.Items.Add("Stop mouse sharing", null, (_, _) => Stop());
-        trayMenu.Items.Add("Reasignar teclas...", null, (_, _) => EditKeyMappings());
+        trayMenu.Items.Add("Remap keys...", null, (_, _) => EditKeyMappings());
         trayMenu.Items.Add("Restart as administrator...", null, (_, _) => RestartAsAdministrator()).Enabled = !isElevated;
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("Exit", null, (_, _) => ExitApplication());
@@ -331,7 +331,7 @@ internal sealed class MainWindow : Form
             : "Task Manager not responding to the remote mouse? Restart MWB as administrator on that PC and approve UAC with its local mouse.";
         _keyStatus.ForeColor = Muted;
         _keyStatus.Font = new Font("Segoe UI", 9);
-        _keyStatus.Text = "Reasignación de teclas desactivada.";
+        _keyStatus.Text = "Key remapping disabled.";
         _updateStatus.ForeColor = Muted;
         _updateStatus.Font = new Font("Segoe UI", 9);
         _updateStatus.Text = $"Version {_updater.CurrentVersion} • Manual updates from GitHub.";
@@ -427,15 +427,15 @@ internal sealed class MainWindow : Form
                     _keyboard = null;
                     failed?.Dispose();
                     _settings.KeyRemappingEnabled = false;
-                    _keyStatus.Text = "Reasignación pausada: " + error;
+                    _keyStatus.Text = "Key remapping paused: " + error;
                     SettingsStore.Log("Key remapping failed: " + error);
                 }));
             _keyboard?.Configure(_settings.KeyRemappingEnabled, _settings.KeyMappings);
             _keyStatus.Text = _settings.KeyRemappingEnabled && _settings.KeyMappings.Count != 0
-                ? $"{_settings.KeyMappings.Count} reasignación(es) activas en este PC."
-                : "Reasignación de teclas desactivada.";
+                ? $"Key remapping enabled: {_settings.KeyMappings.Count}."
+                : "Key remapping disabled.";
         }
-        catch (Exception ex) { _keyStatus.Text = "No se pudo activar: " + ex.Message; }
+        catch (Exception ex) { _keyStatus.Text = "Could not enable key remapping: " + ex.Message; }
     }
 
     private void EditKeyMappings()
@@ -460,7 +460,7 @@ internal sealed class MainWindow : Form
                 throw;
             }
         }
-        catch (Exception ex) { errorMessage = "No se pudo guardar: " + ex.Message; }
+        catch (Exception ex) { errorMessage = "Could not save key mappings: " + ex.Message; }
         finally
         {
             _editingKeys = false;

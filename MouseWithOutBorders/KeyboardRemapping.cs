@@ -17,14 +17,14 @@ internal static class KeyCatalog
 
     internal static void Validate(IReadOnlyList<KeyMapping> mappings)
     {
-        if (mappings.Count > 128) throw new ArgumentException("Puedes guardar hasta 128 reasignaciones.");
+        if (mappings.Count > 128) throw new ArgumentException("You can save up to 128 key mappings.");
         HashSet<int> sources = [];
         foreach (KeyMapping mapping in mappings)
         {
             if (mapping is null || !Valid(mapping.Source) || !Valid(mapping.Target))
-                throw new ArgumentException("Selecciona una tecla de entrada y una de salida válidas.");
-            if (mapping.Source == mapping.Target) throw new ArgumentException("Selecciona dos teclas distintas.");
-            if (!sources.Add(mapping.Source)) throw new ArgumentException($"{Name(mapping.Source)} ya tiene una asignación. Selecciónala en la lista para cambiarla.");
+                throw new ArgumentException("Select a valid input key and output key.");
+            if (mapping.Source == mapping.Target) throw new ArgumentException("Select two different keys.");
+            if (!sources.Add(mapping.Source)) throw new ArgumentException($"{Name(mapping.Source)} already has a mapping. Select it in the list to change it.");
         }
     }
 

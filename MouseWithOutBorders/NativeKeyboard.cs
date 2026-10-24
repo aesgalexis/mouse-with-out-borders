@@ -38,11 +38,12 @@ internal sealed class NativeKeyboard : IDisposable
     internal static void Inject(int key, bool down) => Inject(key, down, SendInput);
     internal static KeyChoice Describe(KeyChoice key)
     {
-        if (key.Code < 186) return key;
-        uint scan = MapVirtualKey((uint)key.Code, 0);
-        System.Text.StringBuilder name = new(128);
-        return scan != 0 && GetKeyNameText((int)(scan << 16), name, name.Capacity) > 0
-            ? key with { Name = $"{name} · OEM {key.Code}" } : key;
+        if (key.Code < 186 || key.Code == KeyCatalog.NumpadEnter) return key;
+        // Keep layout symbols instead of localized Windows key names. The high
+        // bit marks dead keys; the low word contains the printable character.
+        char symbol = (char)(MapVirtualKey((uint)key.Code, 2) & 0xFFFF);
+        return symbol != '\0' && !char.IsControl(symbol)
+            ? key with { Name = $"{symbol} · OEM {key.Code}" } : key;
     }
     internal static void Inject(int key, bool down, NativeMouse.InputSender sender)
     {
@@ -64,5 +65,4 @@ internal sealed class NativeKeyboard : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string? name);
     [DllImport("user32.dll", SetLastError = true)] private static extern uint SendInput(uint count, [In] NativeMouse.Input[] input, int size);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern uint MapVirtualKey(uint key, uint type);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetKeyNameText(int data, System.Text.StringBuilder name, int size);
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.9 — Consistent English interface
+
+- Use **Remap keys...** consistently in the main window and notification-area menu.
+- Translate the complete key-remapping editor, status/help text, save failures and validation messages into English.
+- Show printable OEM key symbols with English fallback labels instead of localized Windows descriptive key names, preserving the current keyboard layout.
+- Update installation instructions and current documentation to match the English controls. Retain all 0.1.8 input, focus and recovery fixes.
+
 ## 0.1.8 — Responsive receiver windows and consistent input recovery
 
 - Move mouse capture, packet processing and input injection to a dedicated input thread so minimizing, dragging or hiding MWB cannot block the remote button-up/movement events needed to finish Windows tracking loops.
