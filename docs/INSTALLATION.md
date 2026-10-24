@@ -2,14 +2,14 @@
 
 This Windows desktop application shares mouse input between two PCs and can remap keys locally. The same executable runs on both PCs; each PC chooses its own connection role.
 
-The current release is **0.1.5**. It adds two-way input: every mouse and touchpad on either PC can cross after pairing once. **Both PCs must be updated**; the 0.1.2 protocol is incompatible.
+The current release is **0.1.6**. It enables Windows startup and automatic reconnection by default, and adds an explicit administrator restart for elevated windows. Every mouse and touchpad on either PC can cross after pairing once. **Both PCs must be updated**; the 0.1.2 protocol is incompatible.
 
 **Status:** Windows x64 preview. Installation and transport tests run in GitHub Actions. Real pointer switching must still be checked on two physical machines. The current release is unsigned and Windows SmartScreen may warn before installation.
 
 ## Option A — easiest: Setup.exe
 
-1. Open the [v0.1.5 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.5).
-2. Download [MouseWithOutBorders-0.1.5-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.5/MouseWithOutBorders-0.1.5-Setup.exe) and use it on **both PCs**.
+1. Open the [v0.1.6 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.6).
+2. Download [MouseWithOutBorders-0.1.6-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.6/MouseWithOutBorders-0.1.6-Setup.exe) and use it on **both PCs**.
 3. Run it on each PC. Installation is for the current Windows user, without an administrator password. You can also use the portable ZIP without installing anything.
 4. On either PC: open Mouse, with out borders; click **Allow the connection**; click **Start receiving**.
 5. Note this PC's local IPv4 address and 8-character pairing code.
@@ -51,13 +51,13 @@ Upgrading an existing receiver replaces its old 32-character key with a saved 8-
 
 ## Option B — assisted install (Windows PowerShell)
 
-This script defaults to the published **0.1.5** release.
+This script defaults to the published **0.1.6** release.
 
 Download scripts/install.ps1 from the repository, inspect it, then run from PowerShell in the folder where you saved it:
 
     .\install.ps1
 
-This downloads release 0.1.5, verifies the SHA-256 manifest shipped with the release, installs without admin rights, then opens the application.
+This downloads release 0.1.6, verifies the SHA-256 manifest shipped with the release, installs without admin rights, then opens the application.
 
 On the **receiving PC**, use:
 
@@ -76,13 +76,13 @@ To run without opening the UI after the installation:
 - Receiver TCP port: **42187**.
 - Authentication: challenge/response with pairing key, then HMAC on every event.
 - **Events are not encrypted.** Use trusted LAN only, never open or port-forward the port to the internet.
-- Windows Security/UAC, locked or elevated desktops are not remotely controllable by this app.
+- UAC prompts and locked/secure desktops require a local device. For Task Manager and other elevated windows, use **Restart as administrator...** in MWB on the affected PC and approve UAC locally. Cancelling UAC keeps the current connection running.
 - If there are several IPv4 addresses (VPNs, virtual adapters), choose the address on the network shared by both PCs.
 
 ## Startup / tray
 
-- **Start with Windows** adds a per-user startup entry for the current executable.
-- **Connect / listen automatically when opened** restores the saved connection/receiver.
+- **Start with Windows** is enabled by default and adds a per-user startup entry for the current executable. Disable it to save an opt-out.
+- **Connect / listen automatically when opened** is enabled by default and restores the saved connection/receiver. A connecting PC retries until the other PC is ready; incomplete pairing stays editable. Existing disabled preferences are retained.
 - Closing the window minimizes it to the **notification area** by default.
 - Right-click the tray icon and choose **Exit** to actually stop the application.
 
@@ -104,7 +104,7 @@ Windows' standard uninstaller removes the program and startup entry but does not
 
 - This preview is limited to two Windows 10/11 x64 computers.
 - Mouse-only: movement, clicks and wheel. No keyboard sharing, clipboard, files or remote desktop.
-- No Windows Service and no elevated desktop input injection.
+- No Windows Service. The optional administrator restart applies only to the current session; Windows startup stays unelevated. UAC and locked/secure desktops require a local device.
 - For connectivity, ensure private network profile, correct LAN IP, receiver running and matching 8-character code (or the legacy key for an older receiver).
 - For a lost connection, the controller's cursor is released after its network heartbeat timeout, normally about 5 seconds.
 - Diagnostic logs: %LOCALAPPDATA%\MouseWithOutBorders\diagnostics.log. Do not publish logs containing personal information.

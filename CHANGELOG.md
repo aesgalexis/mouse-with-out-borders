@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.6 — Automatic startup, reconnection and administrator restart
+
+- Enable **Start with Windows** and automatic connection/listening by default. Save the Windows startup preference, restore saved pairing at sign-in, and preserve explicit opt-outs.
+- Skip automatic connection for incomplete pairing details and show offline-PC retry status instead of a misleading mouse-input error.
+- Add an explicit **Restart as administrator...** action in the window and tray
+  for Task Manager and other elevated windows that reject remote mouse input.
+  Preserve pairing and resume active sharing; cancelling UAC keeps sharing running.
+- Explain the Windows input privilege restriction and require a local device for
+  UAC prompts and locked screens.
+
 ## 0.1.5 — Local keyboard remapping
 
 - Add mouse-operated input/output key selectors, add/edit/remove controls, a pause switch, and an optional F11 → Backspace / F12 → Enter preset.

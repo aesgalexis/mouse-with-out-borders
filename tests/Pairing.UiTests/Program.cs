@@ -6,8 +6,9 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (args.Contains("--elevation-only", StringComparer.Ordinal)) { ElevationUiTests.Run(); return; }
         if (args.Contains("--cursor-only", StringComparer.Ordinal)) { TestPointerVisibility(); return; }
-        AppSettings settings = new() { MinimizeToTray = false };
+        AppSettings settings = new() { MinimizeToTray = false, AutoConnect = false };
         int saves = 0;
         using MainWindow window = new(settings, _ => saves++, listenerFactory:
             () => new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0));
@@ -74,6 +75,8 @@ internal static class Program
         Console.WriteLine("PASS: receiver, enter-code action, editable code, role persistence and switching while listening.");
         Console.WriteLine("PASS: installer exit request closes MWB from the notification area.");
         UpdaterUiTests.Run();
+        StartupUiTests.Run();
+        ElevationUiTests.Run();
         KeyboardUiTests.Run(args.Length == 2 && args[0] == "--screenshots" ? args[1] : null);
         if (args.Contains("--native-keyboard", StringComparer.Ordinal)) KeyboardUiTests.RunNative();
         if (args.Contains("--native-pointer", StringComparer.Ordinal))

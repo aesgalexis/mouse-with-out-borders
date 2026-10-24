@@ -18,7 +18,7 @@ internal static class KeyboardUiTests
 
     internal static void Run(string? screenshotDirectory)
     {
-        AppSettings settings = new() { MinimizeToTray = false };
+        AppSettings settings = new() { MinimizeToTray = false, AutoConnect = false };
         string? saved = null;
         FakeKeyboard keyboard = new();
         using (MainWindow window = new(settings, value => saved = JsonSerializer.Serialize(value),

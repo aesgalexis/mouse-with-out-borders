@@ -12,6 +12,36 @@ This file distinguishes automated checks from hardware testing. Do not claim a f
 
 CI checks only what it runs. A successful build does not prove smooth mouse interaction.
 
+## Version 0.1.6 release verification (2026-10-24)
+
+The Windows x64 Release build passed locally with zero warnings and errors.
+Self-contained single-file publication and all transport/input, updater, keyboard
+and pairing UI suites passed, including the new automatic-startup/retry and
+administrator-restart checks. The pairing and remapping screens were captured;
+the main window's administrator action and help text were visually inspected.
+The installer and portable ZIP are generated with SHA-256 checksums. GitHub
+Actions also runs the install/upgrade/uninstall suite in its disposable account
+before publishing v0.1.6. Physical two-PC use, actual UAC and sign-out/reboot
+remain manual acceptance checks.
+
+## Administrator windows
+
+The pairing UI suite covers the explicit administrator restart, cancellation of
+UAC without stopping the listener, launch/settings-save failures, successful exit
+from tray mode, elevated status and resuming a listener with AutoConnect disabled.
+Elevation is replaced with a callback: automated tests do not request UAC.
+Run just these checks with `dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj -c Release -- --elevation-only`.
+Local verification on 2026-10-24: Release compilation and these focused UI checks
+passed, as did the transport/input smoke suite. The administrator action and help
+text were also rendered and inspected. This does not confirm physical-PC behavior.
+
+Manual two-PC check: on the receiving desktop, open Task Manager and check hover,
+Close and Minimize using the remote mouse. If blocked in standard mode, use
+**Restart as administrator...** on that PC and approve UAC with its local device.
+Verify reconnection, hover, Close and Minimize, then local takeover and reverse
+handoff. Also cancel UAC once and confirm sharing stays connected. UAC/locked
+screens require a local device. These physical checks remain pending.
+
 ## Connection and input regression checks
 
 Run `dotnet run --project tests/MousePeer.SmokeTests/MousePeer.SmokeTests.csproj -c Release`.
@@ -25,6 +55,17 @@ Pairing checks cover generated 8-character codes, case/spacing normalization,
 invalid input, migration of existing local keys without changing connection
 preferences, legacy 32-character keys, and authenticated round trips with both
 key formats.
+
+Startup UI checks cover the enabled defaults, compatibility with older settings,
+persisted opt-outs, startup-registration failures and checkbox recovery, hidden
+automatic listening at sign-in, and incomplete saved pairing. A loopback test
+starts the receiver after the first connection failure and verifies that the
+hidden connecting app retries automatically. Authentication is left pending so
+this check does not install desktop mouse hooks. Registry changes are replaced
+with callbacks; the tests do not change the user's Windows startup entry.
+These checks passed locally on 2026-10-24, alongside the Release build and the
+pairing, updater and keyboard UI checks. Actual sign-out/reboot and physical
+two-PC interaction remain manual checks.
 
 Run `dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj -c Release`
 on Windows to check that both roles are visible, the receiver offers a direct

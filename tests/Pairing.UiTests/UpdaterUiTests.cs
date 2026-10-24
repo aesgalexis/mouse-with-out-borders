@@ -65,7 +65,7 @@ internal static class UpdaterUiTests
 
     private static MainWindow Window(IAppUpdater updater)
     {
-        MainWindow window = new(new AppSettings { MinimizeToTray = false }, _ => { },
+        MainWindow window = new(new AppSettings { MinimizeToTray = false, AutoConnect = false }, _ => { },
             listenerFactory: () => new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0), updater: updater)
         {
             ShowInTaskbar = false, StartPosition = FormStartPosition.Manual, Location = new Point(-20000, -20000)

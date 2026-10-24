@@ -5,6 +5,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        try { WindowsElevation.WaitForPreviousInstance(args); }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Cannot restart Mouse, with out borders",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
         using Mutex singleton = new(true, @"Local\MouseWithOutBorders-79DBA1BD", out bool created);
         if (!created)
         {
@@ -14,6 +21,7 @@ internal static class Program
         }
 
         ApplicationConfiguration.Initialize();
-        Application.Run(new MainWindow(args.Contains("--autostart", StringComparer.OrdinalIgnoreCase)));
+        Application.Run(new MainWindow(args.Contains("--autostart", StringComparer.OrdinalIgnoreCase),
+            args.Contains("--resume-sharing", StringComparer.OrdinalIgnoreCase)));
     }
 }

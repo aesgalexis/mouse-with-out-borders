@@ -153,7 +153,9 @@ internal static class NativeMouse
             // https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-sendinput
             throw new Win32Exception(error,
                 $"Windows did not accept the mouse input (Win32 error {error}). " +
-                "An elevated application or secure desktop may be blocking it.");
+                "An elevated application or secure desktop may be blocking it. " +
+                "For Task Manager or administrator windows, restart MWB as administrator on the affected PC. " +
+                "UAC prompts and locked screens require a local device.");
         }
     }
 }

@@ -16,11 +16,14 @@ internal sealed class MainWindow : Form
 
     private readonly AppSettings _settings;
     private readonly Action<AppSettings> _saveSettings;
+    private readonly Action<bool> _configureStartup;
     private readonly Func<TcpListener> _listenerFactory;
     private readonly IAppUpdater _updater;
     private readonly Func<Action<string>, IKeyboardRemappingService> _keyboardFactory;
     private IKeyboardRemappingService? _keyboard;
     private readonly bool _launchedAtStartup;
+    private readonly bool _resumeSharing;
+    private readonly Action<bool> _restartElevated;
     private readonly RadioButton _controllerRole = new DarkRoleButton()
     {
         Name = "ControllerRole", Left = 28, Top = 119, Width = 232, Height = 50,
@@ -61,8 +64,8 @@ internal sealed class MainWindow : Form
     private readonly ComboBox _edge = new DarkComboBox() { Name = "ScreenEdge", Left = 28, Top = 345, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
 
     private readonly Button _toggle = new DarkButton() { Name = "ToggleConnection", Left = 28, Top = 403, Width = 480, Height = 48 };
-    private readonly CheckBox _autoConnect = new DarkCheckBox() { Left = 28, Top = 468, Width = 480, Height = 25, Text = "Connect / listen automatically when opened" };
-    private readonly CheckBox _startup = new DarkCheckBox() { Left = 28, Top = 502, Width = 480, Height = 25, Text = "Start with Windows" };
+    private readonly CheckBox _autoConnect = new DarkCheckBox() { Name = "AutoConnect", Left = 28, Top = 468, Width = 480, Height = 25, Text = "Connect / listen automatically when opened" };
+    private readonly CheckBox _startup = new DarkCheckBox() { Name = "StartWithWindows", Left = 28, Top = 502, Width = 480, Height = 25, Text = "Start with Windows" };
     private readonly CheckBox _minimizeTray = new DarkCheckBox() { Name = "MinimizeToTray", Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
     private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
     private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
@@ -77,6 +80,15 @@ internal sealed class MainWindow : Form
     private readonly Label _updateStatus = new()
     {
         Name = "UpdateStatus", Left = 28, Top = 746, Width = 480, Height = 44
+    };
+    private readonly Button _elevate = new DarkButton
+    {
+        Name = "RestartAsAdministrator", Left = 28, Top = 846, Width = 480, Height = 36,
+        Text = "Restart as administrator..."
+    };
+    private readonly Label _privilegeStatus = new()
+    {
+        Name = "PrivilegeStatus", Left = 28, Top = 890, Width = 480, Height = 56
     };
 
     private readonly NotifyIcon _tray;
@@ -97,23 +109,31 @@ internal sealed class MainWindow : Form
     private bool IsReceiver => _receiverRole.Checked;
     private bool ExitRight => _edge.SelectedIndex != 1;
 
-    internal MainWindow(bool launchedAtStartup = false)
-        : this(SettingsStore.Load(), SettingsStore.Save, launchedAtStartup) { }
+    internal MainWindow(bool launchedAtStartup = false, bool resumeSharing = false)
+        : this(SettingsStore.Load(), SettingsStore.Save, launchedAtStartup, resumeSharing: resumeSharing,
+            configureStartup: WindowsStartup.SetEnabled) { }
 
     internal MainWindow(AppSettings settings, Action<AppSettings> saveSettings, bool launchedAtStartup = false,
         Func<TcpListener>? listenerFactory = null, IAppUpdater? updater = null,
-        Func<Action<string>, IKeyboardRemappingService>? keyboardFactory = null)
+        Func<Action<string>, IKeyboardRemappingService>? keyboardFactory = null,
+        bool resumeSharing = false, bool? elevated = null, Action<bool>? restartElevated = null,
+        Action<bool>? configureStartup = null)
     {
         _settings = settings;
         _saveSettings = saveSettings;
+        // The production constructor supplies the registry writer; UI tests stay isolated.
+        _configureStartup = configureStartup ?? (_ => { });
         _listenerFactory = listenerFactory ?? (() => new TcpListener(IPAddress.Any, MousePeer.Port));
         _updater = updater ?? new GitHubAppUpdater();
         _keyboardFactory = keyboardFactory ?? (error => new KeyboardRemappingService(error));
         _launchedAtStartup = launchedAtStartup;
+        _resumeSharing = resumeSharing;
+        _restartElevated = restartElevated ?? WindowsElevation.Restart;
+        bool isElevated = elevated ?? WindowsElevation.IsElevated();
         Text = "Mouse, with out borders";
         Icon = _appIcon;
         using (Icon logo = AppBranding.LoadIcon(new Size(64, 64))) _brand.Image = logo.ToBitmap();
-        ClientSize = new Size(536, 840);
+        ClientSize = new Size(536, 956);
         AutoScroll = true;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -147,7 +167,7 @@ internal sealed class MainWindow : Form
             _receiverIp, _receiverKeyLabel, _receiverKey, _copy, _receiverSteps, _enterCode,
             _hostLabel, _host, _hostKeyLabel, _hostKey, _edgeLabel, _edge,
             _toggle, _autoConnect, _startup, _minimizeTray, _status, _help, footer, _logLink,
-            _update, _updateStatus, _keys, _keyStatus
+            _update, _updateStatus, _keys, _keyStatus, _elevate, _privilegeStatus
         ]);
 
         foreach (Label label in Controls.OfType<Label>())
@@ -186,7 +206,7 @@ internal sealed class MainWindow : Form
         _toggle.BackColor = Accent;
         _toggle.ForeColor = Color.FromArgb(13, 27, 42);
         _toggle.Font = new Font("Segoe UI Semibold", 11, FontStyle.Bold);
-        foreach (Button button in new[] { _copy, _enterCode, _update, _keys })
+        foreach (Button button in new[] { _copy, _enterCode, _update, _keys, _elevate })
         {
             button.FlatStyle = FlatStyle.Flat;
             button.BackColor = Surface;
@@ -212,8 +232,17 @@ internal sealed class MainWindow : Form
         _receiverKey.Text = _settings.PairingKey;
         _autoConnect.Checked = _settings.AutoConnect;
         _minimizeTray.Checked = _settings.MinimizeToTray;
-        try { _startup.Checked = WindowsStartup.IsEnabled(); }
-        catch (Exception ex) { SettingsStore.Log("Read startup preference: " + ex.Message); }
+        string? startupError = null;
+        try
+        {
+            _configureStartup(_settings.StartWithWindows);
+            _startup.Checked = _settings.StartWithWindows;
+        }
+        catch (Exception ex)
+        {
+            startupError = "Cannot change Windows startup: " + ex.Message;
+            SettingsStore.Log(startupError);
+        }
 
         try
         {
@@ -234,6 +263,7 @@ internal sealed class MainWindow : Form
         trayMenu.Items.Add("Open", null, (_, _) => ShowWindow());
         trayMenu.Items.Add("Stop mouse sharing", null, (_, _) => Stop());
         trayMenu.Items.Add("Reasignar teclas...", null, (_, _) => EditKeyMappings());
+        trayMenu.Items.Add("Restart as administrator...", null, (_, _) => RestartAsAdministrator()).Enabled = !isElevated;
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("Exit", null, (_, _) => ExitApplication());
         _tray = new NotifyIcon
@@ -268,7 +298,12 @@ internal sealed class MainWindow : Form
         _startup.CheckedChanged += (_, _) =>
         {
             if (_initializing) return;
-            try { WindowsStartup.SetEnabled(_startup.Checked); }
+            try
+            {
+                _configureStartup(_startup.Checked);
+                _settings.StartWithWindows = _startup.Checked;
+                SavePreferences();
+            }
             catch (Exception ex)
             {
                 SettingsStore.Log("Configure startup: " + ex.Message);
@@ -286,6 +321,14 @@ internal sealed class MainWindow : Form
         _toggle.Click += (_, _) => Toggle();
         _update.Click += async (_, _) => await UpdateApplicationAsync();
         _keys.Click += (_, _) => EditKeyMappings();
+        _elevate.Enabled = !isElevated;
+        _elevate.Text = isElevated ? "Running as administrator" : "Restart as administrator...";
+        _elevate.Click += (_, _) => RestartAsAdministrator();
+        _privilegeStatus.ForeColor = Muted;
+        _privilegeStatus.Font = new Font("Segoe UI", 9);
+        _privilegeStatus.Text = isElevated
+            ? "Administrator mode is active for this session. UAC prompts and the locked screen still require a local device."
+            : "Task Manager not responding to the remote mouse? Restart MWB as administrator on that PC and approve UAC with its local mouse.";
         _keyStatus.ForeColor = Muted;
         _keyStatus.Font = new Font("Segoe UI", 9);
         _keyStatus.Text = "Reasignación de teclas desactivada.";
@@ -303,7 +346,7 @@ internal sealed class MainWindow : Form
 
         _initializing = false;
         _status.ForeColor = Accent;
-        _status.Text = "Not connected.";
+        _status.Text = startupError ?? "Not connected.";
         ShowMode();
     }
 
@@ -358,8 +401,16 @@ internal sealed class MainWindow : Form
         {
             ApplyKeyMappings();
             if (_launchedAtStartup) Hide();
-            if (_autoConnect.Checked && _runCts is null) Toggle();
+            if ((_autoConnect.Checked || _resumeSharing) && _runCts is null && HasConnectionDetails()) Toggle();
         }));
+    }
+
+    private bool HasConnectionDetails()
+    {
+        if (IsReceiver) return true;
+        if (string.IsNullOrWhiteSpace(_host.Text)) return false;
+        try { MousePeer.ParseKey(_hostKey.Text); return true; }
+        catch (ArgumentException) { return false; }
     }
 
     private void ApplyKeyMappings()
@@ -447,9 +498,9 @@ internal sealed class MainWindow : Form
         _help.Text = "Once paired, every mouse and touchpad on either PC can cross the shared edge. The last device moved takes control.";
     }
 
-    private void SavePreferences()
+    private bool SavePreferences()
     {
-        if (_initializing) return;
+        if (_initializing) return false;
         _settings.Role = IsReceiver ? "Receiver" : "Controller";
         _settings.Host = _host.Text.Trim();
         _settings.RemoteKey = MousePeer.NormalizeKey(_hostKey.Text);
@@ -457,11 +508,32 @@ internal sealed class MainWindow : Form
         _settings.ExitEdge = ExitRight ? "Right" : "Left";
         _settings.AutoConnect = _autoConnect.Checked;
         _settings.MinimizeToTray = _minimizeTray.Checked;
-        try { _saveSettings(_settings); }
+        try { _saveSettings(_settings); return true; }
         catch (Exception ex)
         {
             SettingsStore.Log("Save settings: " + ex.Message);
             SetStatus("Could not save settings: " + ex.Message);
+            return false;
+        }
+    }
+
+    private void RestartAsAdministrator()
+    {
+        if (_shuttingDown || _updateCts is not null || !_elevate.Enabled) return;
+        if (!SavePreferences()) return;
+        try
+        {
+            _restartElevated(_runCts is not null);
+            ExitApplication();
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            _privilegeStatus.Text = "Administrator restart cancelled. MWB is still running with its current connection.";
+        }
+        catch (Exception ex)
+        {
+            _privilegeStatus.Text = "Could not restart as administrator: " + ex.Message;
+            SettingsStore.Log("Administrator restart: " + ex.Message);
         }
     }
 
@@ -548,7 +620,7 @@ internal sealed class MainWindow : Form
             catch (Exception ex)
             {
                 SettingsStore.Log("Controller connection: " + ex.Message);
-                if (ex is Win32Exception) inputErrorStatus = "Mouse input failed: " + ex.Message;
+                if (ex is Win32Exception and not SocketException) inputErrorStatus = "Mouse input failed: " + ex.Message;
                 if (!connectedOnce || ex is NotSupportedException)
                 {
                     string message = "Could not connect: " + ex.Message;
@@ -579,7 +651,9 @@ internal sealed class MainWindow : Form
                 Ui(() =>
                 {
                     if (_runCts != lifetime) return;
-                    SetStatus(inputErrorStatus ?? "Connection lost. Trying to reconnect...");
+                    SetStatus(inputErrorStatus ?? (connectedOnce
+                        ? "Connection lost. Trying to reconnect..."
+                        : "Other PC not ready. Retrying connection..."));
                 });
             }
 

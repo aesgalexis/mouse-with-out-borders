@@ -11,7 +11,8 @@ internal sealed class AppSettings
     public string PairingKey { get; set; } = MousePeer.NewKey();
     public string RemoteKey { get; set; } = "";
     public string ExitEdge { get; set; } = "Right";
-    public bool AutoConnect { get; set; }
+    public bool AutoConnect { get; set; } = true;
+    public bool StartWithWindows { get; set; } = true;
     public bool MinimizeToTray { get; set; } = true;
     public bool KeyRemappingEnabled { get; set; }
     public List<KeyMapping> KeyMappings { get; set; } = [];

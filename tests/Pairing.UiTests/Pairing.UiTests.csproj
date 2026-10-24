@@ -8,6 +8,7 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../MouseWithOutBorders/WindowsElevation.cs" Link="WindowsElevation.cs" />
     <Compile Include="../../MouseWithOutBorders/KeyboardRemapping.cs" Link="KeyboardRemapping.cs" />
     <Compile Include="../../MouseWithOutBorders/NativeKeyboard.cs" Link="NativeKeyboard.cs" />
     <Compile Include="../../MouseWithOutBorders/KeyboardRemappingService.cs" Link="KeyboardRemappingService.cs" />
