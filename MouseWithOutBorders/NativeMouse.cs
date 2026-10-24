@@ -34,6 +34,7 @@ internal static class NativeMouse
 
     private const int WH_MOUSE_LL = 14;
     internal static readonly IntPtr InputMarker = (IntPtr)0x4D574232;
+    internal const uint CursorMarkerPrefix = 0x4D570000;
     internal const uint MOVE = 0x0001;
     internal const uint VIRTUALDESK = 0x4000;
     internal const uint ABSOLUTE = 0x8000;
@@ -106,7 +107,8 @@ internal static class NativeMouse
 
     // Windows can synthesize pointer events for touchpads and accessibility
     // devices. Ignore only our own input, rather than every injected event.
-    internal static bool IsOurInput(HookInfo info) => info.ExtraInfo == InputMarker;
+    internal static bool IsOurInput(HookInfo info) =>
+        (unchecked((uint)info.ExtraInfo.ToInt64()) & 0xFFFF0000) == CursorMarkerPrefix;
 
     internal static IntPtr InstallHook(HookProcedure callback)
     {
@@ -122,7 +124,8 @@ internal static class NativeMouse
     internal static void Inject(uint flags, int data, InputSender sendInput)
         => Send(new MouseInput { Flags = flags, MouseData = unchecked((uint)data) }, sendInput);
 
-    internal static void MoveCursor(System.Drawing.Point position, Rectangle bounds, InputSender? sendInput = null)
+    internal static void MoveCursor(System.Drawing.Point position, Rectangle bounds, InputSender? sendInput = null,
+        IntPtr? marker = null)
     {
         if (bounds.Width <= 0 || bounds.Height <= 0) throw new ArgumentException("Invalid desktop bounds.");
         int x = Math.Clamp(position.X, bounds.Left, bounds.Right - 1) - bounds.Left;
@@ -132,12 +135,12 @@ internal static class NativeMouse
             Dx = (int)Math.Clamp(((long)x * 65536 + 32768) / bounds.Width, 0, 65535),
             Dy = (int)Math.Clamp(((long)y * 65536 + 32768) / bounds.Height, 0, 65535),
             Flags = MOVE | ABSOLUTE | VIRTUALDESK
-        }, sendInput ?? SendInput);
+        }, sendInput ?? SendInput, marker);
     }
 
-    private static void Send(MouseInput mouse, InputSender sendInput)
+    private static void Send(MouseInput mouse, InputSender sendInput, IntPtr? marker = null)
     {
-        mouse.ExtraInfo = InputMarker;
+        mouse.ExtraInfo = marker ?? InputMarker;
         Input[] input = [new()
         {
             Type = 0,
@@ -164,12 +167,15 @@ internal sealed class MouseCapture : IDisposable
 {
     private readonly NativeMouse.HookProcedure _callback;
     private readonly Func<uint, NativeMouse.HookInfo, bool> _handler;
+    private readonly Func<uint, NativeMouse.HookInfo, bool>? _injectedHandler;
     private IntPtr _hook;
     private bool _disposed;
 
-    internal MouseCapture(Func<uint, NativeMouse.HookInfo, bool> handler)
+    internal MouseCapture(Func<uint, NativeMouse.HookInfo, bool> handler,
+        Func<uint, NativeMouse.HookInfo, bool>? injectedHandler = null)
     {
         _handler = handler;
+        _injectedHandler = injectedHandler;
         _callback = OnHook; // keep delegate alive while hook is installed
         _hook = NativeMouse.InstallHook(_callback);
     }
@@ -179,7 +185,11 @@ internal sealed class MouseCapture : IDisposable
         if (code >= 0 && !_disposed)
         {
             var info = Marshal.PtrToStructure<NativeMouse.HookInfo>(lp);
-            if (!NativeMouse.IsOurInput(info) && _handler(unchecked((uint)wp.ToInt64()), info))
+            uint message = unchecked((uint)wp.ToInt64());
+            bool suppress = NativeMouse.IsOurInput(info)
+                ? _injectedHandler?.Invoke(message, info) == true
+                : _handler(message, info);
+            if (suppress)
                 return (IntPtr)1;
         }
         return NativeMouse.CallNextHookEx(_hook, code, wp, lp);

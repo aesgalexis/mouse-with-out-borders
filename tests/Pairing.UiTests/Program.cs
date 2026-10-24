@@ -6,6 +6,7 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (args.Contains("--native-return-only", StringComparer.Ordinal)) { CursorReturnUiTests.RunNative(); return; }
         if (args.Contains("--elevation-only", StringComparer.Ordinal)) { ElevationUiTests.Run(); return; }
         if (args.Contains("--cursor-only", StringComparer.Ordinal)) { TestPointerVisibility(); return; }
         AppSettings settings = new() { MinimizeToTray = false, AutoConnect = false };
@@ -81,6 +82,7 @@ internal static class Program
         if (args.Contains("--native-keyboard", StringComparer.Ordinal)) KeyboardUiTests.RunNative();
         if (args.Contains("--native-pointer", StringComparer.Ordinal))
         {
+            CursorReturnUiTests.RunNative();
             TestNativePointer();
             TestPointerVisibility();
         }

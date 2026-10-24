@@ -7,6 +7,7 @@ internal interface IMouseDesktop
 {
     Rectangle Bounds { get; }
     Point Cursor { get; }
+    void BeginCursorTransition();
     void MoveCursor(Point position);
     void SetPointerHidden(bool hidden);
     void Inject(uint flags, int data);
@@ -137,10 +138,11 @@ internal sealed class MouseSharingSession : IDisposable
         _suppressRelease.UnionWith(_forwardedButtons);
         _forwardedButtons.Clear();
         _location = MouseLocation.Local;
-        _desktop.SetPointerHidden(false);
+        _desktop.BeginCursorTransition();
         Rectangle area = _desktop.Bounds;
         int inset = Math.Min(25, Math.Max(0, (area.Width - 1) / 2));
         _desktop.MoveCursor(new Point(ExitRight ? area.Right - 1 - inset : area.Left + inset, Y(ratio)));
+        _desktop.SetPointerHidden(false);
         ReportReady();
     }
 
@@ -149,6 +151,7 @@ internal sealed class MouseSharingSession : IDisposable
         if (!IsReceiving) return;
         ReleaseInjected();
         _location = MouseLocation.Local;
+        _desktop.BeginCursorTransition();
         Send(Stamp(new MousePacket("return", Ratio: Ratio(y))));
         ReportReady();
     }
@@ -178,6 +181,7 @@ internal sealed class MouseSharingSession : IDisposable
         _transfer = checked(++_clock);
         _origin = _side;
         _location = MouseLocation.OtherPc;
+        _desktop.BeginCursorTransition();
         _desktop.SetPointerHidden(true);
         // Suppressing moves at a central anchor also works for devices that only
         // produce Windows pointer events, including built-in touchpads.
@@ -248,11 +252,12 @@ internal sealed class MouseSharingSession : IDisposable
             _transfer = packet.Transfer;
             _origin = packet.Origin;
             _location = MouseLocation.Receiving;
-            _desktop.SetPointerHidden(false);
+            _desktop.BeginCursorTransition();
             Rectangle area = _desktop.Bounds;
             int inset = Math.Min(5, Math.Max(0, (area.Width - 1) / 2));
             _receivedPosition = new Point(ExitRight ? area.Right - 1 - inset : area.Left + inset, Y(packet.Ratio));
             _desktop.MoveCursor(_receivedPosition);
+            _desktop.SetPointerHidden(false);
             _status("Mouse from the other PC is here. Your local mice and touchpad also work.");
             return;
         }
@@ -276,6 +281,7 @@ internal sealed class MouseSharingSession : IDisposable
                 {
                     ReleaseInjected();
                     _location = MouseLocation.Local;
+                    _desktop.BeginCursorTransition();
                     // Park invisibly while the other PC resumes control. Local
                     // device input will reveal this PC's pointer again.
                     _desktop.SetPointerHidden(true);

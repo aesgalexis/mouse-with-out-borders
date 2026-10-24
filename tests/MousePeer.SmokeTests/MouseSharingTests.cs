@@ -16,6 +16,7 @@ internal static class MouseSharingTests
         TestStalePackets();
         TestPointerRestoration();
         TestPointerInput();
+        TestDelayedCursorPlacements();
         Console.WriteLine("PASS: no phantom releases, both mice/directions, takeover, crossing races, stale packets and pointer input.");
     }
 
@@ -29,13 +30,30 @@ internal static class MouseSharingTests
         public Rectangle Bounds { get; } = new(-500, 0, 1000, 700);
         public Point Cursor { get; set; } = new(0, 300);
         internal bool PointerHidden;
+        internal readonly CursorMotionGuard Motion = new();
+        internal bool DelayPlacements;
+        internal readonly List<(Point position, NativeMouse.HookInfo input)> Placements = [];
+        public void BeginCursorTransition() => Motion.BeginTransition();
         public void SetPointerHidden(bool hidden)
         {
             PointerHidden = hidden;
-            if (hidden) Cursor = new Point(Bounds.Left + Bounds.Width / 2, Bounds.Top + Bounds.Height / 2);
+            if (hidden) MoveCursor(new Point(Bounds.Left + Bounds.Width / 2, Bounds.Top + Bounds.Height / 2));
         }
         internal readonly List<(uint flags, int data)> Injected = [];
-        public void MoveCursor(Point point) => Cursor = point;
+        public void MoveCursor(Point point)
+        {
+            if (!DelayPlacements) { Cursor = point; return; }
+            Motion.MoveCursor(point, Bounds, (_, inputs, _) =>
+            {
+                Placements.Add((point, new NativeMouse.HookInfo { ExtraInfo = inputs[0].Data.Mouse.ExtraInfo }));
+                return 1;
+            });
+        }
+        internal void ApplyPlacement(int index)
+        {
+            var placement = Placements[index];
+            if (!Motion.SuppressInjectedMove(placement.input)) Cursor = placement.position;
+        }
         public void Inject(uint flags, int data) => Injected.Add((flags, data));
     }
 
@@ -275,5 +293,61 @@ internal static class MouseSharingTests
                 "Absolute cursor input did not map the virtual desktop or include the feedback marker.");
             return 1;
         });
+    }
+
+    private static void TestDelayedCursorPlacements()
+    {
+        foreach (bool right in new[] { true, false })
+        foreach (int side in new[] { 0, 1 })
+        {
+            using Pair pair = new(right);
+            Desktop source = pair.Desktops[side];
+            source.DelayPlacements = true;
+            pair.Cross(side);
+            MousePacket enter = pair.Sent.Last(entry => entry.from == side && entry.packet.Kind == "enter").packet;
+            Assert(source.Motion.PlacementPending, "Parking must wait for its native acknowledgement.");
+            pair.Sessions[side].Receive(enter with { Kind = "return", Ratio = 0.23 });
+            Assert(!pair.Sessions[side].IsRemote && source.Motion.PlacementPending,
+                "Returning must wait for the edge placement, even before parking has completed.");
+            source.ApplyPlacement(0);
+            Assert(source.Motion.PlacementPending, "An old parking move must not acknowledge the return placement.");
+            source.ApplyPlacement(1);
+            int x = pair.Sessions[side].ExitRight ? source.Bounds.Right - 26 : source.Bounds.Left + 25;
+            Point expected = new(x, (int)Math.Round(0.23 * (source.Bounds.Height - 1)));
+            Assert(source.Cursor == expected && !source.Motion.PlacementPending,
+                "Returning must restore the shared edge and preserve vertical position.");
+            source.ApplyPlacement(0);
+            Assert(source.Cursor == expected, "A late central parking move overwrote the return position.");
+
+            // Receiving a new owner must also cancel queued motion from the old owner.
+            Desktop receiver = pair.Desktops[1 - side];
+            receiver.DelayPlacements = true;
+            pair.Sessions[1 - side].Receive(enter with { Kind = "move", Dy = 3 });
+            Assert(receiver.Placements.Count == 1, "The receiver must have a queued remote move.");
+            Point local = receiver.Cursor;
+            pair.Sessions[1 - side].PhysicalButton(NativeMouse.LEFTDOWN, 0);
+            receiver.ApplyPlacement(0);
+            Assert(receiver.Cursor == local, "A queued remote move overrode local takeover.");
+        }
+
+        CursorMotionGuard motion = new();
+        List<NativeMouse.HookInfo> inputs = [];
+        uint Capture(uint _, NativeMouse.Input[] input, int __)
+        {
+            inputs.Add(new NativeMouse.HookInfo { ExtraInfo = input[0].Data.Mouse.ExtraInfo });
+            return 1;
+        }
+        Rectangle bounds = new(0, 0, 1920, 1080);
+        motion.MoveCursor(new Point(10, 200), bounds, Capture);
+        motion.MoveCursor(new Point(20, 200), bounds, Capture);
+        Assert(inputs.All(NativeMouse.IsOurInput), "Generation-tagged cursor movements must never feed back.");
+        Assert(inputs.All(info => info.ExtraInfo.ToInt64() is >= 0 and <= uint.MaxValue),
+            "Ownership markers must survive Windows input paths that retain only 32 bits.");
+        Assert(!motion.SuppressInjectedMove(inputs[0]) && !motion.SuppressInjectedMove(inputs[1]),
+            "Moves in the same ownership must retain their order before button events.");
+        motion.BeginTransition();
+        Assert(!motion.PlacementPending && motion.SuppressInjectedMove(inputs[1]),
+            "Taking local control must cancel old motion without waiting for an unnecessary warp.");
+        Console.WriteLine("PASS: delayed parking/return placements, edge and height restoration in both layouts/PCs, stale remote motion and ordered current input.");
     }
 }

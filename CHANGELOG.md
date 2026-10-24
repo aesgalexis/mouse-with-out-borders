@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7 — Keep the returning cursor at the shared edge
+
+- Tag native cursor placements by ownership and discard queued parking/remote moves from a previous owner, preventing a late central parking move from overwriting the return position.
+- Keep old-anchor movement suppressed and the parked pointer hidden until Windows processes the new owner's first placement. Return beside the shared edge at the other PC's exit height.
+- Cancel queued remote motion when a local mouse takes over, preserve movement/click ordering within each ownership, and restore pointer visibility during cleanup.
+- Add delayed-input regression checks for both layouts and both PCs, plus a native Windows replay that reproduces the unguarded centre jump and verifies the corrected return.
+
 ## 0.1.6 — Automatic startup, reconnection and administrator restart
 
 - Enable **Start with Windows** and automatic connection/listening by default. Save the Windows startup preference, restore saved pairing at sign-in, and preserve explicit opt-outs.

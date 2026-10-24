@@ -24,6 +24,29 @@ Actions also runs the install/upgrade/uninstall suite in its disposable account
 before publishing v0.1.6. Physical two-PC use, actual UAC and sign-out/reboot
 remain manual acceptance checks.
 
+## Version 0.1.7 return-position regression (2026-10-24)
+
+The previous hook accepted every MWB-generated cursor placement, including an
+old central parking placement delivered after a return. The new cursor-motion
+guard assigns ownership tags, rejects placements from a previous owner and
+suppresses old-anchor input until the new placement reaches the Windows hook.
+The complete tag fits in 32 bits because the local native test observed Windows
+input delivery discarding the upper half of a 64-bit tag.
+
+Transport/input tests exercise delayed parking versus return, the return edge
+and vertical position for both PCs and layouts, queued remote movement after
+local takeover, and movement ordering within the same ownership. The Windows
+native replay verifies that the former unguarded behavior reproduces a centre
+jump, then verifies stale parking/input rejection and resumed local movement
+for both shared edges. Run it alone with
+`dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj -c Release -- --native-return-only`.
+It injects no buttons and restores the original cursor position.
+
+Local Release compilation passed without warnings or errors. All transport,
+updater, keyboard and UI suites passed, as did the full `--native-pointer` check
+(return positioning, pointer event deltas/suppression and hidden-cursor cleanup).
+Actual repeated returns across two physical PCs remain a manual acceptance check.
+
 ## Administrator windows
 
 The pairing UI suite covers the explicit administrator restart, cancellation of

@@ -101,6 +101,7 @@ internal sealed class MainWindow : Form
     private volatile MousePeer? _peer;
     private MouseCapture? _capture;
     private MouseSharingSession? _session;
+    private WindowsMouseDesktop? _mouseDesktop;
     private bool _shuttingDown;
     private bool _initializing = true;
     private bool _exitRequested;
@@ -736,10 +737,11 @@ internal sealed class MainWindow : Form
             try
             {
                 CloseSharingSession();
-                session = new MouseSharingSession(initiator, ExitRight, new WindowsMouseDesktop(),
+                _mouseDesktop = new WindowsMouseDesktop();
+                session = new MouseSharingSession(initiator, ExitRight, _mouseDesktop,
                     peer.Queue, ex => SettingsStore.Log("Release mouse button: " + ex.Message), SetStatus);
                 _session = session;
-                _capture = new MouseCapture(OnMouseHook);
+                _capture = new MouseCapture(OnMouseHook, OnInjectedMouseHook);
                 session.Start();
             }
             catch (Exception ex)
@@ -787,6 +789,8 @@ internal sealed class MainWindow : Form
         catch (Exception ex) { SettingsStore.Log("Release local mouse: " + ex.Message); }
         _capture?.Dispose();
         _capture = null;
+        _mouseDesktop?.Dispose();
+        _mouseDesktop = null;
     }
 
     private static Rectangle GetDesktopBounds()
@@ -797,15 +801,30 @@ internal sealed class MainWindow : Form
         return result;
     }
 
-    private sealed class WindowsMouseDesktop : IMouseDesktop
+    private sealed class WindowsMouseDesktop : IMouseDesktop, IDisposable
     {
         private HiddenPointerWindow? _hiddenPointer;
+        private readonly CursorMotionGuard _motion = new();
+        private bool _hideRequested;
+        public void BeginCursorTransition() => _motion.BeginTransition();
+        internal bool PlacementPending => _motion.PlacementPending;
+        internal bool SuppressInjectedMove(NativeMouse.HookInfo info)
+        {
+            bool suppress = _motion.SuppressInjectedMove(info);
+            if (!suppress && !_hideRequested && !_motion.PlacementPending) RevealPointer();
+            return suppress;
+        }
+        private void RevealPointer()
+        {
+            _hiddenPointer?.Dispose();
+            _hiddenPointer = null;
+        }
         public void SetPointerHidden(bool hidden)
         {
+            _hideRequested = hidden;
             if (!hidden)
             {
-                _hiddenPointer?.Dispose();
-                _hiddenPointer = null;
+                if (!_motion.PlacementPending) RevealPointer();
             }
             else if (_hiddenPointer is null)
             {
@@ -819,8 +838,9 @@ internal sealed class MainWindow : Form
         public Rectangle Bounds => GetDesktopBounds();
         public Point Cursor => NativeMouse.GetCursorPos(out var position)
             ? new Point(position.X, position.Y) : throw new Win32Exception("Cannot read the mouse position.");
-        public void MoveCursor(Point position) => NativeMouse.MoveCursor(position, Bounds);
+        public void MoveCursor(Point position) => _motion.MoveCursor(position, Bounds);
         public void Inject(uint flags, int data) => NativeMouse.Inject(flags, data);
+        public void Dispose() => RevealPointer();
     }
 
     private bool OnMouseHook(uint message, NativeMouse.HookInfo info)
@@ -831,6 +851,7 @@ internal sealed class MainWindow : Form
         {
             if (message == NativeMouse.WM_MOUSEMOVE)
             {
+                if (_mouseDesktop?.PlacementPending == true) return true;
                 if (!NativeMouse.GetCursorPos(out var previous)) return session.IsRemote;
                 return session.PhysicalMove(new Point(previous.X, previous.Y), new Point(info.Position.X, info.Position.Y));
             }
@@ -863,6 +884,9 @@ internal sealed class MainWindow : Form
             return false;
         }
     }
+
+    private bool OnInjectedMouseHook(uint message, NativeMouse.HookInfo info) =>
+        message == NativeMouse.WM_MOUSEMOVE && _mouseDesktop?.SuppressInjectedMove(info) == true;
 
     protected override void WndProc(ref Message message)
     {
