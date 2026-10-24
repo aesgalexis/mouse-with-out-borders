@@ -4,7 +4,7 @@
 # the release's published SHA-256 manifest, and runs Inno Setup locally.
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.9',
+    [string]$Version = '0.1.10',
     [switch]$Receiver,
     [switch]$NoLaunch
 )
@@ -21,7 +21,7 @@ if ([Environment]::OSVersion.Version.Major -lt 10) {
     throw 'Windows 10 or 11 is required.'
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    throw 'Version must look like 0.1.9.'
+    throw 'Version must contain three numeric components.'
 }
 
 $repo = 'aesgalexis/mouse-without-borders'
@@ -90,7 +90,7 @@ try {
     }
     Write-Host ''
     Write-Host "Installed: $exe"
-    Write-Host "Choose 'This PC receives the mouse' on one PC and 'I have the mouse' on the other."
+    Write-Host "Choose 'Allow connection' on one PC and 'Connect to other PC' on the other."
     Write-Host 'Private LAN only. Never forward port 42187 to the internet.'
 } finally {
     Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue

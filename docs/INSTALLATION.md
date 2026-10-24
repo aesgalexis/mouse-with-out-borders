@@ -1,19 +1,19 @@
 # Windows installation (two PCs)
 
-This Windows desktop application shares mouse input between two PCs and can remap keys locally. The same executable runs on both PCs; each PC chooses its own connection role.
+This Windows desktop application shares mouse input and an optional clipboard between two PCs, and can remap keys locally. The same executable runs on both PCs; each PC chooses its own connection role.
 
-The current release is **0.1.9**, with consistent English controls and messages, including the **Remap keys...** editor. It includes the 0.1.8 receiver responsiveness, focus and input-recovery fixes, automatic startup/reconnection and administrator restart. Every mouse and touchpad on either PC can cross after pairing once. **Both PCs must be updated**; the 0.1.2 protocol is incompatible.
+The current release is **0.1.10**, with optional text/file clipboard sharing, remapped-key suppression fixes, concise English controls and desktop shortcut creation unchecked during updates. It includes the earlier receiver responsiveness, focus and input-recovery fixes, automatic startup/reconnection and administrator restart. Every mouse and touchpad on either PC can cross after pairing once. Clipboard sharing requires this version on both PCs; older two-way versions retain mouse compatibility. The 0.1.2 protocol is incompatible.
 
 **Status:** Windows x64 preview. Installation and transport tests run in GitHub Actions. Real pointer switching must still be checked on two physical machines. The current release is unsigned and Windows SmartScreen may warn before installation.
 
 ## Option A — easiest: Setup.exe
 
-1. Open the [v0.1.9 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.9).
-2. Download [MouseWithOutBorders-0.1.9-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.9/MouseWithOutBorders-0.1.9-Setup.exe) and use it on **both PCs**.
+1. Open the [v0.1.10 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.10).
+2. Download [MouseWithOutBorders-0.1.10-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.10/MouseWithOutBorders-0.1.10-Setup.exe) and use it on **both PCs**.
 3. Run it on each PC. Installation is for the current Windows user, without an administrator password. You can also use the portable ZIP without installing anything.
-4. On either PC: open Mouse, with out borders; click **Allow the connection**; click **Start receiving**.
+4. On either PC: open Mouse, with out borders; click **Allow connection**; click **Start receiving**.
 5. Note this PC's local IPv4 address and 8-character pairing code.
-6. On the other PC: click **Connect to other PC**, enter the first PC's IP and code, and select **Right edge** or **Left edge** according to the physical layout. Click **Connect mouse**. The **Have the other PC's code? Enter it here** button also opens these fields, even if this PC is already listening.
+6. On the other PC: click **Connect to other PC**, enter the first PC's IP and code, and select **Right** or **Left** according to the physical layout. Click **Connect mouse**. The **Enter other PC's code** button also opens these fields, even if this PC is already listening.
 7. Either PC's physical mice and touchpad can now cross the shared edge. The listening PC uses the opposite edge automatically. Return across the shared edge, or use a local device to reclaim its PC. No second pairing is needed.
 
 Keep both PCs powered on and connected to the same trusted private LAN.
@@ -26,12 +26,18 @@ The same shutdown applies when uninstalling.
 ## Local key remapping (0.1.5 and later)
 
 For local key remapping, open **Remap keys...**. Choose the input and output
-keys with the two selectors, click **Add**, then **Save and apply**. No typing
-is required. The optional preset supplies F11 → Backspace and F12 → Enter, and can
-be edited before saving. Mappings run only on this PC while MWB is open, even
+keys with the two selectors, click **Add**, then **Save**.
+Mappings run only on this PC while MWB is open, even
 without another PC connected. **Start with Windows** enables them after sign-in.
 The editor pauses remapping; cancelling preserves the previous configuration.
 
+## Clipboard sharing (0.1.10 and later)
+
+Enable **Share clipboard** on both paired PCs. New copies of plain text up to
+1 MiB, or up to 20 regular files and 25 MiB total, can then be pasted on the other
+PC. Folders and links are excluded. Clipboard sharing is disabled by default;
+enabling or reconnecting does not send existing content. Transfers are encrypted
+and yield to mouse traffic.
 
 ## Manual updates from the app (0.1.3 and later)
 
@@ -51,13 +57,13 @@ Upgrading an existing receiver replaces its old 32-character key with a saved 8-
 
 ## Option B — assisted install (Windows PowerShell)
 
-This script defaults to the published **0.1.9** release.
+This script defaults to the published **0.1.10** release.
 
 Download scripts/install.ps1 from the repository, inspect it, then run from PowerShell in the folder where you saved it:
 
     .\install.ps1
 
-This downloads release 0.1.9, verifies the SHA-256 manifest shipped with the release, installs without admin rights, then opens the application.
+This downloads release 0.1.10, verifies the SHA-256 manifest shipped with the release, installs without admin rights, then opens the application.
 
 On the **receiving PC**, use:
 
@@ -75,14 +81,14 @@ To run without opening the UI after the installation:
 
 - Receiver TCP port: **42187**.
 - Authentication: challenge/response with pairing key, then HMAC on every event.
-- **Events are not encrypted.** Use trusted LAN only, never open or port-forward the port to the internet.
+- Mouse events are not encrypted; clipboard payloads use session-bound AES-GCM. Use a trusted LAN only, never open or port-forward the port to the internet.
 - UAC prompts and locked/secure desktops require a local device. For Task Manager and other elevated windows, use **Restart as administrator...** in MWB on the affected PC and approve UAC locally. Cancelling UAC keeps the current connection running.
 - If there are several IPv4 addresses (VPNs, virtual adapters), choose the address on the network shared by both PCs.
 
 ## Startup / tray
 
 - **Start with Windows** is enabled by default and adds a per-user startup entry for the current executable. Disable it to save an opt-out.
-- **Connect / listen automatically when opened** is enabled by default and restores the saved connection/receiver. A connecting PC retries until the other PC is ready; incomplete pairing stays editable. Existing disabled preferences are retained.
+- **Connect automatically** is enabled by default and restores the saved connection/receiver. A connecting PC retries until the other PC is ready; incomplete pairing stays editable. Existing disabled preferences are retained.
 - Closing the window minimizes it to the **notification area** by default.
 - Right-click the tray icon and choose **Exit** to actually stop the application.
 

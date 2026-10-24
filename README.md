@@ -6,7 +6,7 @@
 - Return across the shared edge, or move a local pointing device to reclaim that PC.
 - Hide the inactive parked pointer, restoring it when returning or using a local device.
 - Local key-to-key remapping with input/output selectors. Keyboard input is not shared over the network.
-- Optional text and file clipboard sharing in the unreleased working tree (details below).
+- Optional text and file clipboard sharing (details below).
 - No account or cloud service required.
 - Per-user Windows installer and uninstaller; also available as a portable executable.
 - Tray icon, option to launch with Windows, option to connect automatically, saved device pairing.
@@ -17,9 +17,9 @@
 
 ## Install on both PCs
 
-The current release is **0.1.9**, with consistent English menus, key-remapping controls, status and validation messages. It includes the 0.1.8 receiver responsiveness, focus and input-recovery fixes, automatic startup/reconnection and administrator restart. Install it on both PCs for all improvements. It shares the two-way protocol with 0.1.3; 0.1.2 uses the incompatible older, one-way protocol.
+The current release is **0.1.10**, with optional text/file clipboard sharing, reliable suppression of remapped keys, a concise English interface and desktop shortcut creation disabled by default during updates. It includes the earlier receiver responsiveness, focus and input-recovery fixes, automatic startup/reconnection and administrator restart. Install it on both PCs for clipboard sharing. Older two-way releases retain mouse compatibility; 0.1.2 uses the incompatible one-way protocol.
 
-1. Download [MouseWithOutBorders-0.1.9-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.9/MouseWithOutBorders-0.1.9-Setup.exe) from the [v0.1.9 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.9). A portable ZIP and SHA-256 checksums are also available there.
+1. Download [MouseWithOutBorders-0.1.10-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.10/MouseWithOutBorders-0.1.10-Setup.exe) from the [v0.1.10 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.10). A portable ZIP and SHA-256 checksums are also available there.
 2. Run the setup on **both Windows 10/11 x64 PCs**. No administrator rights are needed to install for the current user.
 3. On either PC, select the receiving role, then **Start receiving**. Note the displayed local IP and **8-character pairing code**.
 4. On the other PC, click **Connect to other PC**, enter that IP and code, and select which edge leads to the first PC. Click **Connect mouse**.
@@ -27,7 +27,7 @@ The current release is **0.1.9**, with consistent English menus, key-remapping c
 
 For an assisted Windows installation or rollback, see [installation instructions](docs/INSTALLATION.md). For automated checks vs. pending two-PC tests, see [verification record](docs/TESTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-The assisted `scripts/install.ps1` script defaults to 0.1.9. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
+The assisted `scripts/install.ps1` script defaults to 0.1.10. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
 
 The pairing code has **8 letters and digits**, without ambiguous characters such as `0`, `O`, `1` or `I`. Lowercase input and pasted spaces or hyphens are accepted. It is saved per user under %LOCALAPPDATA%\MouseWithOutBorders and stays the same between launches. Existing 8-character codes are retained during this update. Upgrading from 32-character local keys generates a short local code; the parser also accepts 32-character keys, but **both apps must support the new two-way protocol**. Never publish a pairing code, diagnostic log or settings file.
 
@@ -48,16 +48,16 @@ Setup installation to get the button.
 
 Open **Remap keys...** from the main window or tray. Select the input and output keys, click **Add**, then **Save**. Mappings are disabled by default, saved per user, and run while MWB is open independently of the mouse connection. The editor pauses remapping; Cancel restores the previous configuration. **Start with Windows** resumes saved mappings after sign-in. Elevated applications require MWB at the same privilege level; secure screens and firmware-only keys are not remapped. Keyboard events are never transmitted or logged.
 
-## Clipboard sharing (unreleased)
+## Clipboard sharing
 
-These source changes are pending the next release; published 0.1.9 does not include them. Enable **Share clipboard** on both PCs after installing a build containing this feature. New copies of plain text and files then become available to paste on the paired PC in either direction. Enabling or reconnecting does not send existing clipboard content.
+Available from **0.1.10**. Enable **Share clipboard** on both PCs. New copies of plain text and files then become available to paste on the paired PC in either direction. Enabling or reconnecting does not send existing clipboard content.
 
 - Plain text: up to **1 MiB** encoded as UTF-8. Rich formatting and images are excluded.
 - Files: up to **20 regular files** and **25 MiB total per copy**. Folders, links and files inside linked folders are excluded. Received files are copies; originals are never moved.
 - Transfers use encrypted, acknowledged chunks and yield to mouse traffic. A new copy, disabling the option or disconnecting cancels unfinished work.
 - Received files are verified before appearing in the clipboard. They remain available after disconnecting or exiting MWB. The cache under `%LOCALAPPDATA%\MouseWithOutBorders\Clipboard` is limited to **64 MiB**; older batches are pruned, while the newest completed batch is retained for pasting.
 
-Both peers must support clipboard sharing and have it enabled. Older releases continue to share the mouse. Desktop shortcut creation is also unchecked by default in the upcoming installer, including updates; existing shortcuts are preserved.
+Both peers must support clipboard sharing and have it enabled. Older releases continue to share the mouse. Desktop shortcut creation is unchecked by default, including during updates; existing shortcuts are preserved.
 
 ## Network and security
 
@@ -67,7 +67,7 @@ If Windows Firewall blocks the receiver, allow the application on **private** ne
 
     New-NetFirewallRule -DisplayName "Mouse With Out Borders" -Direction Inbound -Action Allow -Profile Private -Protocol TCP -LocalPort 42187 -Program "$env:LOCALAPPDATA\Programs\MouseWithOutBorders\MouseWithOutBorders.exe"
 
-The connection requires matching pairing keys, uses challenge-based HMAC authentication and verifies every packet. Mouse packets are **not encrypted**. The unreleased clipboard feature additionally uses session-bound AES-GCM encryption. Use a trusted private network; never open or port-forward TCP 42187 to the internet. The listener binds to the local PC's network interfaces; use Windows Firewall to limit access.
+The connection requires matching pairing keys, uses challenge-based HMAC authentication and verifies every packet. Mouse packets are **not encrypted**. Clipboard transfers additionally use session-bound AES-GCM encryption. Use a trusted private network; never open or port-forward TCP 42187 to the internet. The listener binds to the local PC's network interfaces; use Windows Firewall to limit access.
 
 Settings are stored in the signed-in user's LocalAppData folder; Windows account security protects access to those files. No cloud service is used.
 

@@ -12,10 +12,9 @@ This file distinguishes automated checks from hardware testing. Do not claim a f
 
 CI checks only what it runs. A successful build does not prove smooth mouse interaction.
 
-## Unreleased clipboard and interface changes (2026-10-24)
+## Version 0.1.10 clipboard and interface verification (2026-10-24)
 
-Changes target the next release, without a version bump or new release. The Windows
-Release build and self-contained executable compile successfully. The cleaned
+The Windows Release build and self-contained executable compile successfully. The cleaned
 main window and key-remapping editor were rendered and visually inspected.
 
 Local suites pass for mouse ownership/input, authenticated TCP transport,
@@ -45,8 +44,10 @@ affected keyboard/layout remains part of acceptance for the next installed build
 Inno Setup compiles the candidate installer. The installer smoke script now checks
 fresh default opt-out, explicit shortcut opt-in, deleted shortcuts staying absent
 across manual/app updates and preservation of existing/custom shortcuts. Actual
-installation/update/uninstall tests remain assigned to the disposable CI account;
-the candidate has not been installed over the user's running application.
+installation/update/uninstall checks passed in the disposable CI account in
+[the complete pre-release build](https://github.com/aesgalexis/mouse-without-borders/actions/runs/40112600772).
+The candidate has not been installed over the user's running application. The
+versioned release pipeline repeats these checks before publishing 0.1.10.
 
 Physical acceptance remains pending: install the candidate on two PCs, enable
 clipboard sharing on both, copy/paste text and file batches in both directions,

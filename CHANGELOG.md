@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.10 — Clipboard sharing and input consistency
 
 - Suppress remapped source keys consistently, including printable/OEM keys with modifiers and repeats. Reserve key state before injection, keep sources suppressed on native failures and prevent reentrant cleanup/configuration from leaving stale or stuck keys.
 - Default the desktop shortcut task to unchecked on every installation and update. Preserve existing shortcuts without recreating one the user deleted.
