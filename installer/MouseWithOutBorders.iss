@@ -28,6 +28,9 @@ DisableProgramGroupPage=yes
 CloseApplications=yes
 RestartApplications=no
 UsePreviousAppDir=yes
+; Shortcut creation is opt-in on every run, including upgrades. Reusing a past
+; task selection would recreate a shortcut that the user has since deleted.
+UsePreviousTasks=no
 SetupLogging=yes
 
 [Tasks]

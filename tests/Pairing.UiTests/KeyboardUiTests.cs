@@ -48,8 +48,9 @@ internal static class KeyboardUiTests
                 list.Items[0].Selected = true;
                 Find<Button>(dialog, "RemoveKeyMapping").PerformClick();
                 Assert(list.Items.Count == 1, "Removing the selected mapping failed.");
-                Find<Button>(dialog, "BrokenKeyPreset").PerformClick();
-                Assert(list.Items.Count == 2, "The mouse-only Enter/Backspace preset was not added.");
+                Choose(source, 122); Choose(target, 8);
+                Find<Button>(dialog, "AddKeyMapping").PerformClick();
+                Assert(list.Items.Count == 2, "Adding a replacement mapping after removal failed.");
                 if (screenshotDirectory is not null)
                 {
                     Directory.CreateDirectory(screenshotDirectory);
@@ -59,7 +60,7 @@ internal static class KeyboardUiTests
                 }
                 Find<Button>(dialog, "SaveKeyMappings").PerformClick();
             });
-            Assert(keyboard.Enabled && keyboard.Mappings.SequenceEqual(new[] { new KeyMapping(122, 8), new KeyMapping(123, 13) }),
+            Assert(keyboard.Enabled && keyboard.Mappings.SequenceEqual(new[] { new KeyMapping(123, 13), new KeyMapping(122, 8) }),
                 "Saving did not activate the selected mappings.");
             Assert(saved is not null && JsonSerializer.Deserialize<AppSettings>(saved)!.KeyMappings.SequenceEqual(keyboard.Mappings),
                 "Mappings were not saved for the next launch.");
@@ -88,7 +89,7 @@ internal static class KeyboardUiTests
             Assert(restarted.Enabled && restarted.Mappings.Count() == 2, "Saved mappings were not applied on startup.");
             window.Close();
         }
-        Console.WriteLine("PASS: mouse-only source/target selectors, add/edit/remove, duplicate rejection, preset, save/cancel, startup and independence from mouse sharing.");
+        Console.WriteLine("PASS: source/target selectors, add/edit/remove, duplicate rejection, save/cancel, startup and independence from mouse sharing.");
     }
     private static void Edit(MainWindow owner, Action<KeyRemappingDialog> action)
     {

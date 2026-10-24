@@ -60,17 +60,31 @@ internal sealed class KeyboardRemapper
     private readonly Action<int, bool> _send;
     private readonly Dictionary<int, Press> _pressed = [];
     private readonly HashSet<int> _blockedUntilUp = [];
-    private readonly HashSet<int> _injected = [];
+    private readonly Dictionary<int, long> _injected = [];
+    private readonly Dictionary<int, long> _targetVersions = [];
     private Dictionary<int, int> _mappings = [];
+    private long _configuration;
+    private long _injection;
 
     internal KeyboardRemapper(Action<int, bool> send) => _send = send;
 
     internal void Configure(bool enabled, IReadOnlyList<KeyMapping> mappings)
     {
         KeyCatalog.Validate(mappings);
+        long configuration = ++_configuration;
         _mappings = [];
         Release();
-        _mappings = enabled ? mappings.ToDictionary(map => map.Source, map => map.Target) : [];
+        // SendInput may pump another hook/configuration before returning.
+        if (_configuration == configuration)
+            _mappings = enabled ? mappings.ToDictionary(map => map.Source, map => map.Target) : [];
+    }
+
+    internal bool ShouldSuppress(int source, bool down)
+    {
+        if (_blockedUntilUp.Contains(source)) return true;
+        if (_pressed.TryGetValue(source, out Press? press))
+            return press.Mapped || (!down && _pressed.Any(entry => entry.Key != source && entry.Value.Target == press.Target));
+        return down ? _mappings.ContainsKey(source) : _pressed.Values.Any(press => press.Target == source);
     }
 
     internal bool Process(int source, bool down)
@@ -89,44 +103,62 @@ internal sealed class KeyboardRemapper
             }
             bool mapped = _mappings.TryGetValue(source, out int target);
             if (!mapped) target = source;
-            if (mapped) Send(target, true);
+            // Reserve the source before injection: a reentrant repeat/up must see
+            // this press, and a failing send must still suppress the original key.
             _pressed.Add(source, new(target, mapped));
+            if (mapped) Send(target, true);
             return mapped;
         }
         if (!_pressed.TryGetValue(source, out Press? released))
             return _pressed.Values.Any(press => press.Target == source);
         bool stillHeld = _pressed.Any(entry => entry.Key != source && entry.Value.Target == released.Target);
-        if (released.Mapped && !stillHeld) Send(released.Target, false);
         _pressed.Remove(source);
+        if (released.Mapped && !stillHeld) Send(released.Target, false);
         // A real target key must not release a key another remapped source holds.
-        if (!released.Mapped && !stillHeld) _injected.Remove(source);
+        if (!released.Mapped && !stillHeld) ForgetTarget(source);
         return released.Mapped || stillHeld;
     }
 
     private void Send(int target, bool down)
     {
-        _send(target, down);
-        if (down) _injected.Add(target);
+        long injection = ++_injection;
+        _targetVersions[target] = injection;
+        if (down) _injected[target] = injection;
         else _injected.Remove(target);
+        try { _send(target, down); }
+        catch
+        {
+            // A failed/partial injection may have reached Windows. Retain it for
+            // cleanup, including failed key-up, rather than leaking a held key.
+            if (_targetVersions[target] == injection) _injected[target] = injection;
+            throw;
+        }
+    }
+
+    private void ForgetTarget(int target)
+    {
+        _targetVersions[target] = ++_injection;
+        _injected.Remove(target);
     }
 
     internal void Release()
     {
         List<Exception> errors = [];
-        foreach (int target in _injected.ToArray())
-        {
-            if (_pressed.Any(entry => !entry.Value.Mapped && entry.Value.Target == target))
-            {
-                _injected.Remove(target);
-                continue;
-            }
-            try { Send(target, false); }
-            catch (Exception ex) { errors.Add(ex); }
-        }
         foreach (var entry in _pressed.Where(entry => entry.Value.Mapped).ToArray())
         {
             _blockedUntilUp.Add(entry.Key);
             _pressed.Remove(entry.Key);
+        }
+        foreach ((int target, long injection) in _injected.ToArray())
+        {
+            if (!_injected.TryGetValue(target, out long current) || current != injection) continue;
+            if (_pressed.Any(entry => !entry.Value.Mapped && entry.Value.Target == target))
+            {
+                ForgetTarget(target);
+                continue;
+            }
+            try { Send(target, false); }
+            catch (Exception ex) { errors.Add(ex); }
         }
         if (errors.Count != 0) throw new AggregateException("Windows could not release every remapped key.", errors);
     }

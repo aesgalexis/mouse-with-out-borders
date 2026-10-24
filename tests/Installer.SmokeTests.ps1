@@ -10,7 +10,9 @@ $InstallerPath = (Resolve-Path -LiteralPath $InstallerPath).Path
 $LegacyPortablePath = (Resolve-Path -LiteralPath $LegacyPortablePath).Path
 $testDir = Join-Path $env:LOCALAPPDATA 'Programs\MouseWithOutBorders-InstallerCI'
 $app = Join-Path $testDir 'MouseWithOutBorders.exe'
-$shortcutPath = Join-Path ([Environment]::GetFolderPath('DesktopDirectory')) 'MWB Installer CI.lnk'
+$desktopDir = [Environment]::GetFolderPath('DesktopDirectory')
+$shortcutPath = Join-Path $desktopDir 'MWB Installer CI.lnk'
+$defaultShortcutPath = Join-Path $desktopDir 'Mouse, with out borders.lnk'
 $logDir = Join-Path $PSScriptRoot '..\dist\installer-tests'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $logDir = (Resolve-Path -LiteralPath $logDir).Path
@@ -23,6 +25,9 @@ if ($registration -and $registration.InstallLocation.TrimEnd('\') -ine $testDir.
 if (Get-Process -Name MouseWithOutBorders -ErrorAction SilentlyContinue) {
     throw 'Use a disposable Windows account: MWB is already running.'
 }
+if ((Test-Path -LiteralPath $shortcutPath) -or (Test-Path -LiteralPath $defaultShortcutPath)) {
+    throw 'Use a disposable Windows account: an MWB desktop shortcut already exists.'
+}
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -32,7 +37,7 @@ public static class MwbInstallerSmokeNative {
 }
 '@
 
-function Invoke-Setup([string]$CaseName, [switch]$AppUpdate) {
+function Invoke-Setup([string]$CaseName, [switch]$AppUpdate, [switch]$DesktopShortcut) {
     Write-Host "Starting installer case: $CaseName"
     $log = Join-Path $logDir ($CaseName + '.log')
     $setupArgs = @(
@@ -40,6 +45,7 @@ function Invoke-Setup([string]$CaseName, [switch]$AppUpdate) {
         ('/DIR="' + $testDir + '"'), ('/LOG="' + $log + '"')
     )
     if ($AppUpdate) { $setupArgs += '/MWBUPDATE=1' }
+    if ($DesktopShortcut) { $setupArgs += '/TASKS=desktopicon' }
     $setup = Start-Process -FilePath $InstallerPath -ArgumentList $setupArgs -WindowStyle Hidden -PassThru
     if (-not $setup.WaitForExit(45000)) {
         $setup.Kill()
@@ -48,6 +54,22 @@ function Invoke-Setup([string]$CaseName, [switch]$AppUpdate) {
     if ($setup.ExitCode -ne 0) { throw "Setup exited $($setup.ExitCode) during $CaseName. See $log" }
     if (-not (Test-Path -LiteralPath $app)) { throw 'Installed EXE not found.' }
     return $log
+}
+
+function Assert-DefaultShortcut([bool]$Expected) {
+    if ((Test-Path -LiteralPath $defaultShortcutPath) -ne $Expected) {
+        throw "Unexpected desktop shortcut state: expected present=$Expected."
+    }
+}
+
+function Assert-ShortcutIcon([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { throw "Desktop shortcut was removed: $Path" }
+    $link = $shell.CreateShortcut($Path)
+    if ($link.TargetPath -ine $app -or
+        $link.IconLocation.Replace('"', '') -ine ($expectedIconPath + ',0') -or
+        -not (Test-Path -LiteralPath $expectedIconPath)) {
+        throw "Setup did not preserve the desktop shortcut and refresh its icon: $Path"
+    }
 }
 
 function Start-TestApp([switch]$Tray) {
@@ -80,6 +102,8 @@ function Start-TestApp([switch]$Tray) {
 
 try {
     [void](Invoke-Setup 'fresh-install')
+    Assert-DefaultShortcut $false
+    Write-Output 'PASS: the desktop shortcut is unchecked by default on a fresh installation.'
     $installedVersion = [Version](Get-Item -LiteralPath $app).VersionInfo.FileVersion
     $expectedIconPath = Join-Path $testDir ('app-' + $installedVersion.ToString(3) + '.ico')
     $shell = New-Object -ComObject WScript.Shell
@@ -88,6 +112,18 @@ try {
     $shortcut.IconLocation = $app + ',0'
     $shortcut.Save()
 
+    # Persist a previous selection, then delete its shortcut as a user would.
+    # An ordinary upgrade must not restore that historical selection.
+    [void](Invoke-Setup 'desktop-shortcut-opt-in' -DesktopShortcut)
+    Assert-DefaultShortcut $true
+    Remove-Item -LiteralPath $defaultShortcutPath -Force
+    [void](Invoke-Setup 'upgrade-deleted-desktop-shortcut')
+    Assert-DefaultShortcut $false
+    Assert-ShortcutIcon $shortcutPath
+    Write-Output 'PASS: an upgrade does not recreate a desktop shortcut deleted after explicit opt-in.'
+
+    [void](Invoke-Setup 'desktop-shortcut-opt-in-again' -DesktopShortcut)
+    Assert-DefaultShortcut $true
     foreach ($mode in @('window', 'tray', 'legacy-tray')) {
         if ($mode -eq 'legacy-tray') {
             $legacyDir = Join-Path $logDir 'legacy'
@@ -96,11 +132,8 @@ try {
         }
         $runningApp = Start-TestApp -Tray:($mode -ne 'window')
         $log = Invoke-Setup ('upgrade-' + $mode)
-        $shortcut = $shell.CreateShortcut($shortcutPath)
-        if ($shortcut.IconLocation.Replace('"', '') -ine ($expectedIconPath + ',0') -or
-            -not (Test-Path -LiteralPath $expectedIconPath)) {
-            throw 'Setup did not migrate the existing desktop shortcut to its versioned icon.'
-        }
+        Assert-ShortcutIcon $shortcutPath
+        Assert-ShortcutIcon $defaultShortcutPath
         if (-not $runningApp.WaitForExit(5000)) { throw "Setup left the $mode app running." }
         $logText = Get-Content -LiteralPath $log -Raw
         if (-not $logText.Contains('Requesting MWB exit before replacing its files.')) {
@@ -113,8 +146,15 @@ try {
         Write-Output "PASS: automatic upgrade while MWB is running ($mode)."
     }
 
+    # Re-select immediately before deleting, so the in-app updater also has a
+    # saved desktopicon selection to ignore rather than an already-empty one.
+    [void](Invoke-Setup 'desktop-shortcut-before-in-app-update' -DesktopShortcut)
+    Assert-DefaultShortcut $true
+    Remove-Item -LiteralPath $defaultShortcutPath -Force
     $updatingApp = Start-TestApp -Tray
     [void](Invoke-Setup 'in-app-update' -AppUpdate)
+    Assert-DefaultShortcut $false
+    Assert-ShortcutIcon $shortcutPath
     if (-not $updatingApp.WaitForExit(5000)) { throw 'In-app update left the old app running.' }
     $restartedApp = $null
     for ($attempt = 0; $attempt -lt 80; $attempt++) {
@@ -130,7 +170,7 @@ try {
         throw 'Could not close the restarted test application.'
     }
     if (-not $restartedApp.WaitForExit(5000)) { throw 'The restarted test application did not exit.' }
-    Write-Output 'PASS: in-app update closes the tray app and reopens the installed executable.'
+    Write-Output 'PASS: in-app update reopens MWB without recreating the deleted desktop shortcut.'
 
     $runningApp = Start-TestApp -Tray
     $uninstaller = Join-Path $testDir 'unins000.exe'
@@ -147,6 +187,7 @@ try {
     Write-Output 'PASS: uninstall while MWB is running in the tray.'
 } finally {
     Remove-Item -LiteralPath $shortcutPath -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $defaultShortcutPath -Force -ErrorAction SilentlyContinue
     Get-Process -Name MouseWithOutBorders -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -ieq $app } | Stop-Process -Force
 }

@@ -16,6 +16,9 @@
     <Compile Include="../../MouseWithOutBorders/NativeKeyboard.cs" Link="NativeKeyboard.cs" />
     <Compile Include="../../MouseWithOutBorders/KeyboardRemappingService.cs" Link="KeyboardRemappingService.cs" />
     <Compile Include="../../MouseWithOutBorders/KeyRemappingDialog.cs" Link="KeyRemappingDialog.cs" />
+    <Compile Include="../../MouseWithOutBorders/ClipboardTransfer.cs" Link="ClipboardTransfer.cs" />
+    <Compile Include="../../MouseWithOutBorders/ClipboardSharingService.cs" Link="ClipboardSharingService.cs" />
+    <Compile Include="../../MouseWithOutBorders/WindowsClipboardAdapter.cs" Link="WindowsClipboardAdapter.cs" />
     <EmbeddedResource Include="../../MouseWithOutBorders/assets/app.ico" LogicalName="MouseWithOutBorders.AppIcon.ico" />
     <Compile Include="../../MouseWithOutBorders/AppBranding.cs" Link="AppBranding.cs" />
     <Compile Include="../../MouseWithOutBorders/DarkTheme.cs" Link="DarkTheme.cs" />

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../MouseWithOutBorders/ClipboardSharingService.cs" Link="ClipboardSharingService.cs" />
+    <Compile Include="../../MouseWithOutBorders/WindowsClipboardAdapter.cs" Link="WindowsClipboardAdapter.cs" />
+    <Compile Include="../../MouseWithOutBorders/ClipboardTransfer.cs" Link="ClipboardTransfer.cs" />
+    <Compile Include="../../MouseWithOutBorders/MousePeer.cs" Link="MousePeer.cs" />
+  </ItemGroup>
+</Project>

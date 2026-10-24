@@ -12,6 +12,47 @@ This file distinguishes automated checks from hardware testing. Do not claim a f
 
 CI checks only what it runs. A successful build does not prove smooth mouse interaction.
 
+## Unreleased clipboard and interface changes (2026-10-24)
+
+Changes target the next release, without a version bump or new release. The Windows
+Release build and self-contained executable compile successfully. The cleaned
+main window and key-remapping editor were rendered and visually inspected.
+
+Local suites pass for mouse ownership/input, authenticated TCP transport,
+backpressure, updater, keyboard remapping and the complete setup UI. Clipboard
+coverage includes explicit opt-in and persistence, AES-GCM/directional validation,
+legacy peer compatibility, bounded frames/queues, malformed payloads, Unicode
+text/names, size/count/path limits, SHA-256, cancellation, negative acknowledgments,
+cache retention and recovery after failed partial-file deletion. A complete
+25 MiB file transfer through real loopback peers preserves mouse-packet delivery;
+service tests use separate STA workers and fake clipboard adapters, including
+disable/re-enable, reconnect, replacement of unfinished copies and echo suppression.
+The tests never read or replace the user's clipboard. Symlink creation is skipped
+when Windows does not grant the required privilege; junction rejection also has
+a dedicated fixture.
+
+Keyboard suppression regressions pass for all 18,632 distinct source/target pairs
+in the 137-key catalog, plus 13,312 OEM deletion/modifier cases and reentrant
+press/release/configuration/failure scenarios. A separate native Windows run
+passes 1,849 cases, observing the end of the hook chain so an original printable
+source leaking alongside its remapped destination causes a failure. Its own sink
+intercepts all test input before it can reach a user's window, including injected
+Shift/Ctrl/Alt/AltGr/Windows combinations and simulated destination failures.
+Run it with `dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj -c Release -- --native-keyboard-suppression-only`.
+The standard UI suite also passes after the keyboard changes. Physical use of the
+affected keyboard/layout remains part of acceptance for the next installed build.
+
+Inno Setup compiles the candidate installer. The installer smoke script now checks
+fresh default opt-out, explicit shortcut opt-in, deleted shortcuts staying absent
+across manual/app updates and preservation of existing/custom shortcuts. Actual
+installation/update/uninstall tests remain assigned to the disposable CI account;
+the candidate has not been installed over the user's running application.
+
+Physical acceptance remains pending: install the candidate on two PCs, enable
+clipboard sharing on both, copy/paste text and file batches in both directions,
+check over-limit/folder rejection, repeat copies during mouse crossings and
+disconnect while a transfer is active. Verify native Explorer paste after MWB exits.
+
 ## Version 0.1.9 English-interface verification (2026-10-24)
 
 Release compilation passed without warnings or errors. Keyboard smoke tests and

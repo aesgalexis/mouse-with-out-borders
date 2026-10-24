@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Suppress remapped source keys consistently, including printable/OEM keys with modifiers and repeats. Reserve key state before injection, keep sources suppressed on native failures and prevent reentrant cleanup/configuration from leaving stale or stuck keys.
+- Default the desktop shortcut task to unchecked on every installation and update. Preserve existing shortcuts without recreating one the user deleted.
+- Remove redundant subtitles, examples, setup notes and key-remapping presets; keep concise English controls and validation.
+- Add optional, bidirectional clipboard sharing for plain text up to 1 MiB and batches of up to 20 regular files, 25 MiB total. Folders and links are excluded. The option is disabled by default and must be enabled on both PCs.
+- Encrypt clipboard payloads with session-bound AES-GCM, acknowledge bounded chunks, prioritize mouse packets, validate file names/sizes/SHA-256 and publish only completed copies. Older peers retain mouse sharing without clipboard transfers.
+- Cancel superseded/disconnected transfers, suppress clipboard echoes and retain verified file copies in a bounded local cache so they can be pasted after disconnecting.
+
 ## 0.1.9 — Consistent English interface
 
 - Use **Remap keys...** consistently in the main window and notification-area menu.

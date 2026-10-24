@@ -70,6 +70,14 @@ jobs:
         shell: pwsh
         run: dotnet run --project tests/Keyboard.SmokeTests/Keyboard.SmokeTests.csproj --configuration Release
 
+      - name: Test bounded clipboard transfers
+        shell: pwsh
+        run: dotnet run --project tests/Clipboard.SmokeTests/Clipboard.SmokeTests.csproj --configuration Release
+
+      - name: Test clipboard service with isolated adapters
+        shell: pwsh
+        run: dotnet run --project tests/Clipboard.ServiceTests/Clipboard.ServiceTests.csproj --configuration Release
+
       - name: Test pairing setup UI
         shell: pwsh
         run: dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj --configuration Release

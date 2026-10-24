@@ -25,7 +25,7 @@ internal static class ElevationUiTests
             Show(window);
             Button restart = Find<Button>(window, "RestartAsAdministrator");
             Label privilege = Find<Label>(window, "PrivilegeStatus");
-            Assert(restart.Enabled && privilege.Text.Contains("Task Manager"),
+            Assert(restart.Enabled && privilege.Text.Contains("elevated apps"),
                 "Standard mode must explain the restriction and offer an explicit restart.");
             Find<Button>(window, "ToggleConnection").PerformClick();
             restart.PerformClick();

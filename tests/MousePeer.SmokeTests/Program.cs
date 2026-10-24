@@ -16,6 +16,7 @@ internal static class Program
         MouseSharingTests.Run();
         CursorMotionGuardTests.Run();
         await BackpressureTests.RunAsync();
+        await ClipboardTransportTests.RunAsync();
         byte[] key = MousePeer.ParseKey(MousePeer.NewKey());
         await TestAuthenticatedRoundTrip(key);
         Console.WriteLine("PASS: authenticated mouse data roundtrip.");

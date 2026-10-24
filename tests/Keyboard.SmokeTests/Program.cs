@@ -65,4 +65,5 @@ NativeKeyboard.Inject(KeyCatalog.NumpadEnter, false, (count, input, size) =>
 });
 try { NativeKeyboard.Inject(13, true, (_, _, _) => 0); throw new Exception("Failed SendInput was ignored."); }
 catch (System.ComponentModel.Win32Exception) { }
+ReentrancyTests.Run();
 Console.WriteLine("PASS: selectors/validation, saved mappings, Enter/Backspace, repeat, swaps, shared targets, real-key collisions, disable/reconfigure/cleanup and native keyboard INPUT.");

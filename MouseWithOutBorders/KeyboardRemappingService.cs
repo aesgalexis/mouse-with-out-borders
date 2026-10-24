@@ -14,7 +14,7 @@ internal sealed class KeyboardRemappingService : IKeyboardRemappingService
     private Control? _dispatch;
     private KeyboardRemapper? _engine;
     private volatile bool _disposed;
-    internal KeyboardRemappingService(Action<string> error)
+    internal KeyboardRemappingService(Action<string> error, Action<int, bool>? send = null)
     {
         _error = error;
         TaskCompletionSource<bool> ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -25,15 +25,18 @@ internal sealed class KeyboardRemappingService : IKeyboardRemappingService
                 using Control dispatch = new();
                 _ = dispatch.Handle;
                 _dispatch = dispatch;
-                _engine = new KeyboardRemapper(NativeKeyboard.Inject);
+                _engine = new KeyboardRemapper(send ?? NativeKeyboard.Inject);
                 using NativeKeyboard hook = new((key, down) =>
                 {
+                    bool suppress = _engine.ShouldSuppress(key, down);
                     try { return _engine.Process(key, down); }
                     catch (Exception ex)
                     {
                         try { _engine.Configure(false, []); } catch { }
                         _error(ex.Message);
-                        return false;
+                        // A destination may already have been injected. Never let
+                        // the original printable key through on this error path.
+                        return suppress;
                     }
                 });
                 ready.TrySetResult(true);

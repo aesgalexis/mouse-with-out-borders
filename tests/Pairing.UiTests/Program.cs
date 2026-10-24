@@ -9,7 +9,9 @@ internal static class Program
         if (args.Contains("--robustness-only", StringComparer.Ordinal)) { RobustnessUiTests.Run(); return; }
         if (args.Contains("--native-robustness-only", StringComparer.Ordinal)) { RobustnessUiTests.RunNative(); return; }
         if (args.Contains("--native-return-only", StringComparer.Ordinal)) { CursorReturnUiTests.RunNative(); return; }
+        if (args.Contains("--native-keyboard-suppression-only", StringComparer.Ordinal)) { KeyboardSuppressionTests.RunNative(); return; }
         if (args.Contains("--elevation-only", StringComparer.Ordinal)) { ElevationUiTests.Run(); return; }
+        if (args.Contains("--clipboard-only", StringComparer.Ordinal)) { ClipboardUiTests.Run(); return; }
         if (args.Contains("--cursor-only", StringComparer.Ordinal)) { TestPointerVisibility(); return; }
         AppSettings settings = new() { MinimizeToTray = false, AutoConnect = false };
         int saves = 0;
@@ -82,6 +84,7 @@ internal static class Program
         ElevationUiTests.Run();
         RobustnessUiTests.Run();
         KeyboardUiTests.Run(args.Length == 2 && args[0] == "--screenshots" ? args[1] : null);
+        ClipboardUiTests.Run();
         if (args.Contains("--native-keyboard", StringComparer.Ordinal)) KeyboardUiTests.RunNative();
         if (args.Contains("--native-pointer", StringComparer.Ordinal))
         {

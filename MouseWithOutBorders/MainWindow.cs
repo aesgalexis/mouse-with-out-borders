@@ -21,74 +21,72 @@ internal sealed class MainWindow : Form
     private readonly IAppUpdater _updater;
     private readonly Func<Action<string>, IKeyboardRemappingService> _keyboardFactory;
     private IKeyboardRemappingService? _keyboard;
+    private readonly Func<Action<string>, IClipboardSharingService> _clipboardFactory;
+    private volatile IClipboardSharingService? _clipboard;
+    private readonly ToolTip _tips = new();
     private readonly bool _launchedAtStartup;
     private readonly bool _resumeSharing;
     private readonly Action<bool> _restartElevated;
     private readonly RadioButton _controllerRole = new DarkRoleButton()
     {
-        Name = "ControllerRole", Left = 28, Top = 119, Width = 232, Height = 50,
+        Name = "ControllerRole", Left = 28, Top = 90, Width = 232, Height = 40,
         Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
-        Text = "Connect to other PC\nEnter the other PC's code", TabIndex = 0
+        Text = "Connect to other PC", TabIndex = 0
     };
     private readonly RadioButton _receiverRole = new DarkRoleButton()
     {
-        Name = "ReceiverRole", Left = 276, Top = 119, Width = 232, Height = 50,
+        Name = "ReceiverRole", Left = 276, Top = 90, Width = 232, Height = 40,
         Appearance = Appearance.Button, TextAlign = ContentAlignment.MiddleCenter,
-        Text = "Allow the connection\nShow this PC's code", TabIndex = 1
+        Text = "Allow connection", TabIndex = 1
     };
-    private readonly Label _receiverIp = new() { Left = 28, Top = 180, Width = 480, Height = 42 };
-    private readonly Label _receiverKeyLabel = new() { Left = 28, Top = 231, Width = 480, Text = "THIS PC'S PAIRING CODE (8 CHARACTERS)" };
-    private readonly TextBox _receiverKey = new() { Name = "LocalPairingCode", Left = 28, Top = 258, Width = 366, ReadOnly = true };
-    private readonly Button _copy = new DarkButton() { Left = 402, Top = 255, Width = 106, Height = 34, Text = "Copy code" };
-    private readonly Label _receiverSteps = new()
-    {
-        Left = 28, Top = 302, Width = 480, Height = 46,
-        Text = "Click Start receiving. On the other PC, choose 'Connect to other PC' and enter this IP and code. Both PCs can use their mice."
-    };
+    private readonly Label _receiverIp = new() { Left = 28, Top = 146, Width = 480, Height = 42 };
+    private readonly Label _receiverKeyLabel = new() { Left = 28, Top = 197, Width = 480, Text = "THIS PC'S PAIRING CODE" };
+    private readonly TextBox _receiverKey = new() { Name = "LocalPairingCode", Left = 28, Top = 224, Width = 366, ReadOnly = true };
+    private readonly Button _copy = new DarkButton() { Left = 402, Top = 221, Width = 106, Height = 34, Text = "Copy code" };
     private readonly Button _enterCode = new DarkButton()
     {
-        Name = "EnterOtherPcCode", Left = 28, Top = 354, Width = 480, Height = 36,
-        Text = "Have the other PC's code? Enter it here"
+        Name = "EnterOtherPcCode", Left = 28, Top = 320, Width = 480, Height = 36,
+        Text = "Enter other PC's code"
     };
 
-    private readonly Label _hostLabel = new() { Left = 28, Top = 178, Width = 480, Text = "RECEIVING PC'S LOCAL IP" };
-    private readonly TextBox _host = new() { Name = "ReceiverHost", Left = 28, Top = 205, Width = 480, PlaceholderText = "e.g. 192.168.1.25", TabIndex = 2 };
-    private readonly Label _hostKeyLabel = new() { Left = 28, Top = 245, Width = 480, Text = "ENTER THE RECEIVING PC'S PAIRING CODE" };
+    private readonly Label _hostLabel = new() { Left = 28, Top = 144, Width = 480, Text = "OTHER PC'S IP ADDRESS" };
+    private readonly TextBox _host = new() { Name = "ReceiverHost", Left = 28, Top = 171, Width = 480, TabIndex = 2 };
+    private readonly Label _hostKeyLabel = new() { Left = 28, Top = 211, Width = 480, Text = "OTHER PC'S PAIRING CODE" };
     private readonly TextBox _hostKey = new()
     {
-        Name = "RemotePairingCode", Left = 28, Top = 272, Width = 480,
-        PlaceholderText = "8 characters shown on the other PC", CharacterCasing = CharacterCasing.Upper,
+        Name = "RemotePairingCode", Left = 28, Top = 238, Width = 480,
+        CharacterCasing = CharacterCasing.Upper,
         AccessibleName = "Receiving PC's pairing code", TabIndex = 3
     };
-    private readonly Label _edgeLabel = new() { Left = 28, Top = 318, Width = 480, Text = "WHICH EDGE LEADS TO THE OTHER PC?" };
-    private readonly ComboBox _edge = new DarkComboBox() { Name = "ScreenEdge", Left = 28, Top = 345, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Label _edgeLabel = new() { Left = 28, Top = 284, Width = 480, Text = "SCREEN EDGE" };
+    private readonly ComboBox _edge = new DarkComboBox() { Name = "ScreenEdge", Left = 28, Top = 311, Width = 480, DropDownStyle = ComboBoxStyle.DropDownList };
 
-    private readonly Button _toggle = new DarkButton() { Name = "ToggleConnection", Left = 28, Top = 403, Width = 480, Height = 48 };
-    private readonly CheckBox _autoConnect = new DarkCheckBox() { Name = "AutoConnect", Left = 28, Top = 468, Width = 480, Height = 25, Text = "Connect / listen automatically when opened" };
-    private readonly CheckBox _startup = new DarkCheckBox() { Name = "StartWithWindows", Left = 28, Top = 502, Width = 480, Height = 25, Text = "Start with Windows" };
-    private readonly CheckBox _minimizeTray = new DarkCheckBox() { Name = "MinimizeToTray", Left = 28, Top = 536, Width = 480, Height = 25, Text = "Keep running in the notification area when closed" };
-    private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 585, Width = 480, Height = 45 };
-    private readonly Label _help = new() { Left = 28, Top = 635, Width = 480, Height = 46 };
-    private readonly LinkLabel _logLink = new() { Left = 28, Top = 802, Width = 170, Text = "Open diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
-    private readonly Button _keys = new DarkButton { Name = "OpenKeyRemapping", Left = 28, Top = 701, Width = 194, Height = 36, Text = "Remap keys..." };
-    private readonly Label _keyStatus = new() { Name = "KeyRemappingStatus", Left = 210, Top = 797, Width = 298, Height = 38 };
+    private readonly Button _toggle = new DarkButton() { Name = "ToggleConnection", Left = 28, Top = 365, Width = 480, Height = 48 };
+    private readonly CheckBox _autoConnect = new DarkCheckBox() { Name = "AutoConnect", Left = 28, Top = 426, Width = 480, Height = 25, Text = "Connect automatically" };
+    private readonly CheckBox _startup = new DarkCheckBox() { Name = "StartWithWindows", Left = 28, Top = 460, Width = 480, Height = 25, Text = "Start with Windows" };
+    private readonly CheckBox _minimizeTray = new DarkCheckBox() { Name = "MinimizeToTray", Left = 28, Top = 494, Width = 480, Height = 25, Text = "Close to notification area" };
+    private readonly CheckBox _shareClipboard = new DarkCheckBox() { Name = "ShareClipboard", Left = 28, Top = 528, Width = 480, Height = 25, Text = "Share clipboard" };
+    private readonly Label _status = new() { Name = "ConnectionStatus", Left = 28, Top = 536, Width = 480, Height = 40 };
+    private readonly LinkLabel _logLink = new() { Left = 28, Top = 678, Width = 170, Text = "Diagnostic log", LinkColor = Accent, ActiveLinkColor = Foreground };
+    private readonly Button _keys = new DarkButton { Name = "OpenKeyRemapping", Left = 28, Top = 590, Width = 194, Height = 36, Text = "Remap keys..." };
+    private readonly Label _keyStatus = new() { Name = "KeyRemappingStatus", Left = 210, Top = 674, Width = 298, Height = 38 };
     private readonly Button _update = new DarkButton()
     {
-        Name = "CheckForUpdates", Left = 232, Top = 701, Width = 276, Height = 36,
+        Name = "CheckForUpdates", Left = 232, Top = 590, Width = 276, Height = 36,
         Text = "Check && install updates"
     };
     private readonly Label _updateStatus = new()
     {
-        Name = "UpdateStatus", Left = 28, Top = 746, Width = 480, Height = 44
+        Name = "UpdateStatus", Left = 28, Top = 634, Width = 480, Height = 32
     };
     private readonly Button _elevate = new DarkButton
     {
-        Name = "RestartAsAdministrator", Left = 28, Top = 846, Width = 480, Height = 36,
+        Name = "RestartAsAdministrator", Left = 28, Top = 716, Width = 480, Height = 36,
         Text = "Restart as administrator..."
     };
     private readonly Label _privilegeStatus = new()
     {
-        Name = "PrivilegeStatus", Left = 28, Top = 890, Width = 480, Height = 56
+        Name = "PrivilegeStatus", Left = 28, Top = 762, Width = 480, Height = 42
     };
 
     private readonly NotifyIcon _tray;
@@ -117,7 +115,8 @@ internal sealed class MainWindow : Form
         Func<TcpListener>? listenerFactory = null, IAppUpdater? updater = null,
         Func<Action<string>, IKeyboardRemappingService>? keyboardFactory = null,
         bool resumeSharing = false, bool? elevated = null, Action<bool>? restartElevated = null,
-        Action<bool>? configureStartup = null)
+        Action<bool>? configureStartup = null,
+        Func<Action<string>, IClipboardSharingService>? clipboardFactory = null)
     {
         _settings = settings;
         _saveSettings = saveSettings;
@@ -126,6 +125,7 @@ internal sealed class MainWindow : Form
         _listenerFactory = listenerFactory ?? (() => new TcpListener(IPAddress.Any, MousePeer.Port));
         _updater = updater ?? new GitHubAppUpdater();
         _keyboardFactory = keyboardFactory ?? (error => new KeyboardRemappingService(error));
+        _clipboardFactory = clipboardFactory ?? (status => new ClipboardSharingService(status));
         _launchedAtStartup = launchedAtStartup;
         _resumeSharing = resumeSharing;
         _restartElevated = restartElevated ?? WindowsElevation.Restart;
@@ -133,7 +133,7 @@ internal sealed class MainWindow : Form
         Text = "Mouse, with out borders";
         Icon = _appIcon;
         using (Icon logo = AppBranding.LoadIcon(new Size(64, 64))) _brand.Image = logo.ToBitmap();
-        ClientSize = new Size(536, 956);
+        ClientSize = new Size(536, 848);
         AutoScroll = true;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -149,31 +149,21 @@ internal sealed class MainWindow : Form
             Left = 88, Top = 20, Width = 420, Height = 42,
             Font = new Font("Segoe UI Semibold", 19, FontStyle.Bold), ForeColor = Foreground
         };
-        Label subtitle = new()
-        {
-            Text = "All your mice and touchpads. Two Windows computers.",
-            Left = 88, Top = 65, Width = 420, Height = 30, ForeColor = Muted
-        };
-        Label modeLabel = new() { Text = "PAIR THESE TWO PCS", Left = 28, Top = 96, Width = 480 };
-        Label footer = new()
-        {
-            Text = "Private LAN only  •  TCP 42187  •  No keyboard sharing",
-            Left = 28, Top = 681, Width = 480, Height = 20, ForeColor = Muted,
-            Font = new Font("Segoe UI", 9)
-        };
-
         Controls.AddRange([
-            _brand, title, subtitle, modeLabel, _controllerRole, _receiverRole,
-            _receiverIp, _receiverKeyLabel, _receiverKey, _copy, _receiverSteps, _enterCode,
+            _brand, title, _controllerRole, _receiverRole,
+            _receiverIp, _receiverKeyLabel, _receiverKey, _copy, _enterCode,
             _hostLabel, _host, _hostKeyLabel, _hostKey, _edgeLabel, _edge,
-            _toggle, _autoConnect, _startup, _minimizeTray, _status, _help, footer, _logLink,
+            _toggle, _autoConnect, _startup, _minimizeTray, _shareClipboard, _status, _logLink,
             _update, _updateStatus, _keys, _keyStatus, _elevate, _privilegeStatus
         ]);
+        foreach (Control control in new Control[] { _status, _logLink, _update, _updateStatus, _keys, _keyStatus, _elevate, _privilegeStatus })
+            control.Top += 34;
+        _tips.SetToolTip(_shareClipboard, "Enable on both PCs. Text up to 1 MiB; up to 20 files, 25 MiB total. Folders are excluded.");
 
         foreach (Label label in Controls.OfType<Label>())
         {
             label.BackColor = Background;
-            if (label != title && label != subtitle && label != footer && label != _receiverIp && label != _receiverSteps && label != _status && label != _help)
+            if (label != title && label != _receiverIp && label != _status)
             {
                 label.ForeColor = Muted;
                 label.Font = new Font("Segoe UI Semibold", 9, FontStyle.Bold);
@@ -223,7 +213,7 @@ internal sealed class MainWindow : Form
             role.Font = new Font("Segoe UI", 9);
         }
 
-        _edge.Items.AddRange(["Right edge → other PC on right", "Left edge → other PC on left"]);
+        _edge.Items.AddRange(["Right", "Left"]);
         _controllerRole.Checked = _settings.Role == "Controller";
         _receiverRole.Checked = !_controllerRole.Checked;
         _edge.SelectedIndex = _settings.ExitEdge == "Left" ? 1 : 0;
@@ -232,6 +222,7 @@ internal sealed class MainWindow : Form
         _receiverKey.Text = _settings.PairingKey;
         _autoConnect.Checked = _settings.AutoConnect;
         _minimizeTray.Checked = _settings.MinimizeToTray;
+        _shareClipboard.Checked = _settings.ShareClipboard;
         string? startupError = null;
         try
         {
@@ -249,10 +240,9 @@ internal sealed class MainWindow : Form
             string ips = string.Join(", ", Dns.GetHostAddresses(Dns.GetHostName())
                 .Where(ip => ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip))
                 .Select(ip => ip.ToString()));
-            _receiverIp.Text = "Local IP: " + (ips.Length == 0 ? "See ipconfig in Windows" : ips) +
-                               "\nListen port: " + MousePeer.Port;
+            _receiverIp.Text = "Local IP: " + (ips.Length == 0 ? "Unavailable" : ips);
         }
-        catch (SocketException) { _receiverIp.Text = "Local IP: See ipconfig in Windows"; }
+        catch (SocketException) { _receiverIp.Text = "Local IP: Unavailable"; }
 
         ContextMenuStrip trayMenu = new()
         {
@@ -295,6 +285,19 @@ internal sealed class MainWindow : Form
         _hostKey.Leave += (_, _) => SavePreferences();
         _autoConnect.CheckedChanged += (_, _) => { if (!_initializing) SavePreferences(); };
         _minimizeTray.CheckedChanged += (_, _) => { if (!_initializing) SavePreferences(); };
+        _shareClipboard.CheckedChanged += (_, _) =>
+        {
+            if (_initializing) return;
+            bool previous = _settings.ShareClipboard;
+            if (SavePreferences()) ApplyClipboardSharing();
+            else
+            {
+                _settings.ShareClipboard = previous;
+                _initializing = true;
+                _shareClipboard.Checked = previous;
+                _initializing = false;
+            }
+        };
         _startup.CheckedChanged += (_, _) =>
         {
             if (_initializing) return;
@@ -316,7 +319,7 @@ internal sealed class MainWindow : Form
         _copy.Click += (_, _) =>
         {
             Clipboard.SetText(_receiverKey.Text);
-            SetStatus("Code copied. On the other PC, choose 'Connect to other PC' and enter it there.");
+            SetStatus("Code copied.");
         };
         _toggle.Click += (_, _) => Toggle();
         _update.Click += async (_, _) => await UpdateApplicationAsync();
@@ -327,14 +330,14 @@ internal sealed class MainWindow : Form
         _privilegeStatus.ForeColor = Muted;
         _privilegeStatus.Font = new Font("Segoe UI", 9);
         _privilegeStatus.Text = isElevated
-            ? "Administrator mode is active for this session. UAC prompts and the locked screen still require a local device."
-            : "Task Manager not responding to the remote mouse? Restart MWB as administrator on that PC and approve UAC with its local mouse.";
+            ? "Administrator mode active."
+            : "Administrator mode is required to control elevated apps.";
         _keyStatus.ForeColor = Muted;
         _keyStatus.Font = new Font("Segoe UI", 9);
         _keyStatus.Text = "Key remapping disabled.";
         _updateStatus.ForeColor = Muted;
         _updateStatus.Font = new Font("Segoe UI", 9);
-        _updateStatus.Text = $"Version {_updater.CurrentVersion} • Manual updates from GitHub.";
+        _updateStatus.Text = $"Version {_updater.CurrentVersion}";
         _logLink.LinkClicked += (_, _) =>
         {
             SettingsStore.Log("Diagnostics opened.");
@@ -400,6 +403,7 @@ internal sealed class MainWindow : Form
         BeginInvoke((MethodInvoker)(() =>
         {
             ApplyKeyMappings();
+            ApplyClipboardSharing();
             if (_launchedAtStartup) Hide();
             if ((_autoConnect.Checked || _resumeSharing) && _runCts is null && HasConnectionDetails()) Toggle();
         }));
@@ -411,6 +415,31 @@ internal sealed class MainWindow : Form
         if (string.IsNullOrWhiteSpace(_host.Text)) return false;
         try { MousePeer.ParseKey(_hostKey.Text); return true; }
         catch (ArgumentException) { return false; }
+    }
+
+    private void ApplyClipboardSharing()
+    {
+        if (_shuttingDown) return;
+        try
+        {
+            if (_shareClipboard.Checked)
+                _clipboard ??= _clipboardFactory(message => Ui(() =>
+                {
+                    if (!string.IsNullOrEmpty(message)) SetStatus(message);
+                }));
+            _clipboard?.SetEnabled(_shareClipboard.Checked);
+            if (_peer is { } peer) _clipboard?.Attach(peer);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Could not enable clipboard sharing: " + ex.Message);
+            _initializing = true;
+            _shareClipboard.Checked = false;
+            _initializing = false;
+            _settings.ShareClipboard = false;
+            _clipboard?.Dispose();
+            _clipboard = null;
+        }
     }
 
     private void ApplyKeyMappings()
@@ -485,7 +514,6 @@ internal sealed class MainWindow : Form
         _receiverKeyLabel.Visible = receiver;
         _receiverKey.Visible = receiver;
         _copy.Visible = receiver;
-        _receiverSteps.Visible = receiver;
         _enterCode.Visible = receiver;
         _hostLabel.Visible = !receiver;
         _host.Visible = !receiver;
@@ -494,8 +522,6 @@ internal sealed class MainWindow : Form
         _edgeLabel.Visible = !receiver;
         _edge.Visible = !receiver;
         _toggle.Text = _runCts is null ? (receiver ? "Start receiving" : "Connect mouse") : "Disconnect / Stop";
-        _help.ForeColor = Muted;
-        _help.Text = "Once paired, every mouse and touchpad on either PC can cross the shared edge. The last device moved takes control.";
     }
 
     private bool SavePreferences()
@@ -508,6 +534,7 @@ internal sealed class MainWindow : Form
         _settings.ExitEdge = ExitRight ? "Right" : "Left";
         _settings.AutoConnect = _autoConnect.Checked;
         _settings.MinimizeToTray = _minimizeTray.Checked;
+        _settings.ShareClipboard = _shareClipboard.Checked;
         try { _saveSettings(_settings); return true; }
         catch (Exception ex)
         {
@@ -751,6 +778,7 @@ internal sealed class MainWindow : Form
         }
         try
         {
+            _clipboard?.Attach(peer);
             Task reading = peer.ReadLoopAsync(sharing.Receive, lifetime.Token);
             Task completed = await Task.WhenAny(reading, sharing.Completion).ConfigureAwait(false);
             if (completed == sharing.Completion && !reading.IsCompleted)
@@ -770,6 +798,7 @@ internal sealed class MainWindow : Form
         }
         finally
         {
+            _clipboard?.Detach(peer);
             lock (_sharingLock)
             {
                 if (ReferenceEquals(_sharing, sharing)) _sharing = null;
@@ -805,6 +834,7 @@ internal sealed class MainWindow : Form
         _listener?.Stop();
         _listener = null;
         CloseSharingSession();
+        if (_peer is { } peer) _clipboard?.Detach(peer);
         _peer?.Dispose();
         _peer = null;
         _controllerRole.Enabled = true;
@@ -837,6 +867,8 @@ internal sealed class MainWindow : Form
         _keyboard = null;
         _updateCts?.Cancel();
         Stop();
+        _clipboard?.Dispose();
+        _clipboard = null;
         _tray.Visible = false;
         _tray.Dispose();
         base.OnFormClosing(e);
@@ -853,6 +885,9 @@ internal sealed class MainWindow : Form
             CloseSharingSession();
             _keyboard?.Dispose();
             _keyboard = null;
+            _clipboard?.Dispose();
+            _clipboard = null;
+            _tips.Dispose();
             _iconsDisposed = true;
             _tray?.Dispose();
             _brand.Image?.Dispose();
