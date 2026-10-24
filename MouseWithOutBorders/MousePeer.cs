@@ -33,7 +33,11 @@ internal sealed class MousePeer : IDisposable
     private readonly byte[] _key;
     private readonly string _nonce;
     private readonly Channel<MousePacket> _outgoing =
-        Channel.CreateUnbounded<MousePacket>(new UnboundedChannelOptions { SingleReader = true });
+        Channel.CreateBounded<MousePacket>(new BoundedChannelOptions(4096)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.Wait
+        });
     private readonly CancellationTokenSource _stopping = new();
     private long _sent;
     private long _received;

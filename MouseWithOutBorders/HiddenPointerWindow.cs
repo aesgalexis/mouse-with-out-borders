@@ -28,7 +28,6 @@ internal sealed class HiddenPointerWindow : Form
         // Alpha zero would pass hit testing to the window beneath, which could
         // reset the cursor. A 1% tint over 16x16 pixels is imperceptible.
         Opacity = 0.01;
-        TopMost = true;
     }
 
     protected override bool ShowWithoutActivation => true;
@@ -45,7 +44,8 @@ internal sealed class HiddenPointerWindow : Form
     internal void HidePointer()
     {
         _previous = SetCursor(_blank);
-        Show();
+        // Managed Form.Show/Hide perform activation bookkeeping. This helper
+        // must never become the active WinForms form or restore another form.
         ShowWindow(Handle, 4);
         if (!SetWindowPos(Handle, (IntPtr)(-1), 0, 0, 0, 0, 0x53))
             throw new Win32Exception(Marshal.GetLastWin32Error());
@@ -72,7 +72,7 @@ internal sealed class HiddenPointerWindow : Form
     {
         if (disposing && !_destroyed)
         {
-            Hide();
+            if (IsHandleCreated) ShowWindow(Handle, 0);
             SetCursor(_previous != IntPtr.Zero ? _previous : LoadCursor(IntPtr.Zero, (IntPtr)32512));
         }
         base.Dispose(disposing);

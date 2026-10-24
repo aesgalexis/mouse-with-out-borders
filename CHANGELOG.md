@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.8 — Responsive receiver windows and consistent input recovery
+
+- Move mouse capture, packet processing and input injection to a dedicated input thread so minimizing, dragging or hiding MWB cannot block the remote button-up/movement events needed to finish Windows tracking loops.
+- Defer pointer-window creation/destruction outside low-level hook callbacks and use native non-activating visibility changes to preserve foreground focus during crossings.
+- Limit cursor-placement acknowledgement waits to 250 ms, retire expired placement tags and recover visibility automatically instead of leaving the local pointer blocked.
+- Reserve injected button state before calling Windows, handle reentrant releases and retries, and stop a failed transition if a held button cannot be released.
+- Preserve local drags already in progress when pairing/reconnecting, and clear obsolete release suppression when a new click begins.
+- Bound input queues, detect a stopped input worker, contain deferred callback errors and drain cursor restoration before removing the hook during shutdown.
+- Add blocked-UI, native receiver-minimize/focus, held-button/reentrancy, missing-acknowledgement and stalled-peer regressions.
+
 ## 0.1.7 — Keep the returning cursor at the shared edge
 
 - Tag native cursor placements by ownership and discard queued parking/remote moves from a previous owner, preventing a late central parking move from overwriting the return position.

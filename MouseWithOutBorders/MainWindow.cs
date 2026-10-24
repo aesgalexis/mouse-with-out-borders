@@ -99,9 +99,8 @@ internal sealed class MainWindow : Form
     private CancellationTokenSource? _updateCts;
     private TcpListener? _listener;
     private volatile MousePeer? _peer;
-    private MouseCapture? _capture;
-    private MouseSharingSession? _session;
-    private WindowsMouseDesktop? _mouseDesktop;
+    private readonly object _sharingLock = new();
+    private MouseSharingService? _sharing;
     private bool _shuttingDown;
     private bool _initializing = true;
     private bool _exitRequested;
@@ -729,43 +728,40 @@ internal sealed class MainWindow : Form
 
     private async Task RunSharingAsync(MousePeer peer, bool initiator, CancellationTokenSource lifetime)
     {
-        MouseSharingSession? session = null;
         Exception? inputFailure = null;
-        Ui(() =>
+        bool exitRight = !string.Equals(_settings.ExitEdge, "Left", StringComparison.OrdinalIgnoreCase);
+        using MouseSharingService sharing = new(initiator, exitRight, peer.Queue, ex =>
         {
-            if (_runCts != lifetime || !ReferenceEquals(_peer, peer)) return;
-            try
+            Volatile.Write(ref inputFailure, ex);
+            peer.Dispose();
+            Ui(() =>
             {
-                CloseSharingSession();
-                _mouseDesktop = new WindowsMouseDesktop();
-                session = new MouseSharingSession(initiator, ExitRight, _mouseDesktop,
-                    peer.Queue, ex => SettingsStore.Log("Release mouse button: " + ex.Message), SetStatus);
-                _session = session;
-                _capture = new MouseCapture(OnMouseHook, OnInjectedMouseHook);
-                session.Start();
-            }
-            catch (Exception ex)
-            {
-                Volatile.Write(ref inputFailure, ex);
-                CloseSharingSession();
-                SetStatus("Mouse capture error: " + ex.Message);
-                peer.Dispose();
-            }
-        });
+                if (_runCts == lifetime && ReferenceEquals(_peer, peer))
+                    SetStatus("Mouse input failed: " + ex.Message);
+            });
+        }, message => Ui(() =>
+        {
+            if (_runCts == lifetime && ReferenceEquals(_peer, peer)) SetStatus(message);
+        }));
+        lock (_sharingLock)
+        {
+            if (lifetime.IsCancellationRequested || _runCts != lifetime || !ReferenceEquals(_peer, peer))
+                throw new OperationCanceledException(lifetime.Token);
+            _sharing = sharing;
+        }
         try
         {
-            await peer.ReadLoopAsync(packet => Ui(() =>
+            Task reading = peer.ReadLoopAsync(sharing.Receive, lifetime.Token);
+            Task completed = await Task.WhenAny(reading, sharing.Completion).ConfigureAwait(false);
+            if (completed == sharing.Completion && !reading.IsCompleted)
             {
-                if (session is null || !ReferenceEquals(_session, session)) return;
-                try { session.Receive(packet); }
-                catch (Exception ex)
-                {
-                    Volatile.Write(ref inputFailure, ex);
-                    CloseSharingSession();
-                    SetStatus("Mouse input failed: " + ex.Message);
-                    peer.Dispose();
-                }
-            }), lifetime.Token).ConfigureAwait(false);
+                if (!lifetime.IsCancellationRequested && Volatile.Read(ref inputFailure) is null)
+                    Volatile.Write(ref inputFailure, new IOException("Mouse input loop stopped. Reconnecting."));
+                peer.Dispose();
+            }
+            await reading.ConfigureAwait(false);
+            if (Volatile.Read(ref inputFailure) is { } failure)
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failure);
         }
         catch (Exception) when (Volatile.Read(ref inputFailure) is not null)
         {
@@ -774,119 +770,23 @@ internal sealed class MainWindow : Form
         }
         finally
         {
-            Ui(() =>
+            lock (_sharingLock)
             {
-                if (session is not null && ReferenceEquals(_session, session)) CloseSharingSession();
-            });
+                if (ReferenceEquals(_sharing, sharing)) _sharing = null;
+            }
         }
     }
 
     private void CloseSharingSession()
     {
-        MouseSharingSession? session = _session;
-        _session = null;
-        try { session?.Dispose(); }
-        catch (Exception ex) { SettingsStore.Log("Release local mouse: " + ex.Message); }
-        _capture?.Dispose();
-        _capture = null;
-        _mouseDesktop?.Dispose();
-        _mouseDesktop = null;
+        MouseSharingService? sharing;
+        lock (_sharingLock)
+        {
+            sharing = _sharing;
+            _sharing = null;
+        }
+        sharing?.Dispose();
     }
-
-    private static Rectangle GetDesktopBounds()
-    {
-        Rectangle result = Screen.AllScreens[0].Bounds;
-        foreach (Screen screen in Screen.AllScreens.Skip(1))
-            result = Rectangle.Union(result, screen.Bounds);
-        return result;
-    }
-
-    private sealed class WindowsMouseDesktop : IMouseDesktop, IDisposable
-    {
-        private HiddenPointerWindow? _hiddenPointer;
-        private readonly CursorMotionGuard _motion = new();
-        private bool _hideRequested;
-        public void BeginCursorTransition() => _motion.BeginTransition();
-        internal bool PlacementPending => _motion.PlacementPending;
-        internal bool SuppressInjectedMove(NativeMouse.HookInfo info)
-        {
-            bool suppress = _motion.SuppressInjectedMove(info);
-            if (!suppress && !_hideRequested && !_motion.PlacementPending) RevealPointer();
-            return suppress;
-        }
-        private void RevealPointer()
-        {
-            _hiddenPointer?.Dispose();
-            _hiddenPointer = null;
-        }
-        public void SetPointerHidden(bool hidden)
-        {
-            _hideRequested = hidden;
-            if (!hidden)
-            {
-                if (!_motion.PlacementPending) RevealPointer();
-            }
-            else if (_hiddenPointer is null)
-            {
-                Rectangle bounds = (Screen.PrimaryScreen ?? Screen.AllScreens[0]).Bounds;
-                Point anchor = new(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
-                _hiddenPointer = new HiddenPointerWindow(anchor);
-                _hiddenPointer.HidePointer();
-                MoveCursor(anchor);
-            }
-        }
-        public Rectangle Bounds => GetDesktopBounds();
-        public Point Cursor => NativeMouse.GetCursorPos(out var position)
-            ? new Point(position.X, position.Y) : throw new Win32Exception("Cannot read the mouse position.");
-        public void MoveCursor(Point position) => _motion.MoveCursor(position, Bounds);
-        public void Inject(uint flags, int data) => NativeMouse.Inject(flags, data);
-        public void Dispose() => RevealPointer();
-    }
-
-    private bool OnMouseHook(uint message, NativeMouse.HookInfo info)
-    {
-        MouseSharingSession? session = _session;
-        if (session is null) return false;
-        try
-        {
-            if (message == NativeMouse.WM_MOUSEMOVE)
-            {
-                if (_mouseDesktop?.PlacementPending == true) return true;
-                if (!NativeMouse.GetCursorPos(out var previous)) return session.IsRemote;
-                return session.PhysicalMove(new Point(previous.X, previous.Y), new Point(info.Position.X, info.Position.Y));
-            }
-            uint flag = message switch
-            {
-                NativeMouse.WM_LBUTTONDOWN => NativeMouse.LEFTDOWN,
-                NativeMouse.WM_LBUTTONUP => NativeMouse.LEFTUP,
-                NativeMouse.WM_RBUTTONDOWN => NativeMouse.RIGHTDOWN,
-                NativeMouse.WM_RBUTTONUP => NativeMouse.RIGHTUP,
-                NativeMouse.WM_MBUTTONDOWN => NativeMouse.MIDDLEDOWN,
-                NativeMouse.WM_MBUTTONUP => NativeMouse.MIDDLEUP,
-                NativeMouse.WM_XBUTTONDOWN => NativeMouse.XDOWN,
-                NativeMouse.WM_XBUTTONUP => NativeMouse.XUP,
-                NativeMouse.WM_MOUSEWHEEL => NativeMouse.WHEEL,
-                NativeMouse.WM_MOUSEHWHEEL => NativeMouse.HWHEEL,
-                _ => 0
-            };
-            if (flag == 0) return session.IsRemote;
-            int data = flag is NativeMouse.WHEEL or NativeMouse.HWHEEL
-                ? (short)((info.MouseData >> 16) & 0xFFFF)
-                : flag is NativeMouse.XDOWN or NativeMouse.XUP ? (int)((info.MouseData >> 16) & 0xFFFF) : 0;
-            return flag is NativeMouse.WHEEL or NativeMouse.HWHEEL
-                ? session.PhysicalWheel(flag, data) : session.PhysicalButton(flag, data);
-        }
-        catch (Exception ex)
-        {
-            CloseSharingSession();
-            _peer?.Dispose();
-            SetStatus("Mouse sharing stopped: " + ex.Message);
-            return false;
-        }
-    }
-
-    private bool OnInjectedMouseHook(uint message, NativeMouse.HookInfo info) =>
-        message == NativeMouse.WM_MOUSEMOVE && _mouseDesktop?.SuppressInjectedMove(info) == true;
 
     protected override void WndProc(ref Message message)
     {
@@ -946,6 +846,11 @@ internal sealed class MainWindow : Form
     {
         if (disposing && !_iconsDisposed)
         {
+            _shuttingDown = true;
+            _runCts?.Cancel();
+            _listener?.Stop();
+            _peer?.Dispose();
+            CloseSharingSession();
             _keyboard?.Dispose();
             _keyboard = null;
             _iconsDisposed = true;

@@ -14,6 +14,8 @@ internal static class Program
         TestPairingCodes();
         Console.WriteLine("PASS: short codes, input normalization, legacy keys and saved-code migration.");
         MouseSharingTests.Run();
+        CursorMotionGuardTests.Run();
+        await BackpressureTests.RunAsync();
         byte[] key = MousePeer.ParseKey(MousePeer.NewKey());
         await TestAuthenticatedRoundTrip(key);
         Console.WriteLine("PASS: authenticated mouse data roundtrip.");

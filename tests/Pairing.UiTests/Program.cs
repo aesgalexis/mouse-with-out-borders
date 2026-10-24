@@ -6,6 +6,8 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (args.Contains("--robustness-only", StringComparer.Ordinal)) { RobustnessUiTests.Run(); return; }
+        if (args.Contains("--native-robustness-only", StringComparer.Ordinal)) { RobustnessUiTests.RunNative(); return; }
         if (args.Contains("--native-return-only", StringComparer.Ordinal)) { CursorReturnUiTests.RunNative(); return; }
         if (args.Contains("--elevation-only", StringComparer.Ordinal)) { ElevationUiTests.Run(); return; }
         if (args.Contains("--cursor-only", StringComparer.Ordinal)) { TestPointerVisibility(); return; }
@@ -78,10 +80,12 @@ internal static class Program
         UpdaterUiTests.Run();
         StartupUiTests.Run();
         ElevationUiTests.Run();
+        RobustnessUiTests.Run();
         KeyboardUiTests.Run(args.Length == 2 && args[0] == "--screenshots" ? args[1] : null);
         if (args.Contains("--native-keyboard", StringComparer.Ordinal)) KeyboardUiTests.RunNative();
         if (args.Contains("--native-pointer", StringComparer.Ordinal))
         {
+            RobustnessUiTests.RunNative();
             CursorReturnUiTests.RunNative();
             TestNativePointer();
             TestPointerVisibility();
@@ -169,7 +173,9 @@ internal static class Program
 
     private static void TestPointerVisibility()
     {
-        using MouseCapture keepStill = new((message, _) => message == NativeMouse.WM_MOUSEMOVE);
+        // Isolate pointer input during this short focus check too: a real local
+        // click changing foreground must not be attributed to the helper window.
+        using MouseCapture keepStill = new((_, _) => true);
         NativeMouse.GetCursorPos(out var original);
         Point position = new(original.X, original.Y);
         IntPtr foreground = GetForegroundWindow();
@@ -192,7 +198,8 @@ internal static class Program
                         $"position={info.Position.X},{info.Position.Y}, bounds={parked.Bounds}, window={WindowFromPoint(info.Position)}, expectedWindow={parked.Handle}, " +
                         $"visible={parked.Visible}, exStyle={GetWindowLong(parked.Handle, -20):X}, opacity={parked.Opacity}, actualBounds={actualBounds}, hitClass={hitClass}.");
                 if (GetForegroundWindow() != foreground)
-                    throw new Exception("Hiding the pointer stole the foreground window.");
+                    throw new Exception($"Hiding the pointer changed foreground: before={foreground}, " +
+                        $"after={GetForegroundWindow()}, helper={parked.Handle}.");
             }
             CursorInfo restored = new() { Size = System.Runtime.InteropServices.Marshal.SizeOf<CursorInfo>() };
             if (!GetCursorInfo(ref restored) || restored.Cursor == hiddenCursor)

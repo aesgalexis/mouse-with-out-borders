@@ -16,9 +16,9 @@
 
 ## Install on both PCs
 
-The current release is **0.1.7**, fixing the intermittent jump to the centre when returning across the shared edge. It includes automatic startup/reconnection, administrator restart for elevated windows and local key-to-key remapping. Install it on both PCs for all improvements. It shares the two-way protocol with 0.1.3; 0.1.2 uses the incompatible older, one-way protocol.
+The current release is **0.1.8**, keeping mouse input independent of the MWB window so minimizing or dragging it cannot stall remote control. It also hardens focus preservation, cursor recovery and held-button handling. It includes automatic startup/reconnection, administrator restart and local key-to-key remapping. Install it on both PCs for all improvements. It shares the two-way protocol with 0.1.3; 0.1.2 uses the incompatible older, one-way protocol.
 
-1. Download [MouseWithOutBorders-0.1.7-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.7/MouseWithOutBorders-0.1.7-Setup.exe) from the [v0.1.7 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.7). A portable ZIP and SHA-256 checksums are also available there.
+1. Download [MouseWithOutBorders-0.1.8-Setup.exe](https://github.com/aesgalexis/mouse-without-borders/releases/download/v0.1.8/MouseWithOutBorders-0.1.8-Setup.exe) from the [v0.1.8 release](https://github.com/aesgalexis/mouse-without-borders/releases/tag/v0.1.8). A portable ZIP and SHA-256 checksums are also available there.
 2. Run the setup on **both Windows 10/11 x64 PCs**. No administrator rights are needed to install for the current user.
 3. On either PC, click **Allow the connection**, then **Start receiving**. Note the displayed local IP and **8-character pairing code**.
 4. On the other PC, click **Connect to other PC**, enter that IP and code, and select which edge leads to the first PC. Click **Connect mouse**. If both PCs show a code, **Have the other PC's code? Enter it here** opens the editable connection fields.
@@ -26,7 +26,7 @@ The current release is **0.1.7**, fixing the intermittent jump to the centre whe
 
 For an assisted Windows installation or rollback, see [installation instructions](docs/INSTALLATION.md). For automated checks vs. pending two-PC tests, see [verification record](docs/TESTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-The assisted `scripts/install.ps1` script defaults to 0.1.7. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
+The assisted `scripts/install.ps1` script defaults to 0.1.8. It verifies release SHA-256 checksums and installs only on the current PC; `-Receiver` adds the optional private-network firewall rule on the PC accepting the connection.
 
 The pairing code has **8 letters and digits**, without ambiguous characters such as `0`, `O`, `1` or `I`. Lowercase input and pasted spaces or hyphens are accepted. It is saved per user under %LOCALAPPDATA%\MouseWithOutBorders and stays the same between launches. Existing 8-character codes are retained during this update. Upgrading from 32-character local keys generates a short local code; the parser also accepts 32-character keys, but **both apps must support the new two-way protocol**. Never publish a pairing code, diagnostic log or settings file.
 
@@ -71,6 +71,7 @@ Settings are stored in the signed-in user's LocalAppData folder; Windows account
 
 ## Troubleshooting
 
+- **Inconsistent control or focus:** run only one mouse-sharing application at a time. Another active MWB instance or PowerToys Mouse Without Borders can intercept the same pointer input and interfere with handoffs.
 - **Cannot connect:** confirm both PCs are on the same LAN, the receiver IP is correct, and Windows Firewall allows TCP 42187 on a private network.
 - **Both PCs show a code:** on either PC, click **Connect to other PC** or **Have the other PC's code? Enter it here**. Enter the listening PC's local IP and code, and click **Connect mouse**.
 - **Update both PCs:** two-way input requires the new version on both computers; 0.1.2 cannot use this protocol.

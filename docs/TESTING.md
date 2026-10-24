@@ -12,6 +12,39 @@ This file distinguishes automated checks from hardware testing. Do not claim a f
 
 CI checks only what it runs. A successful build does not prove smooth mouse interaction.
 
+## Version 0.1.8 receiver and focus regressions (2026-10-24)
+
+The independent mouse-input loop is tested with the application's UI thread
+deliberately blocked, repeated creation/disposal and late packets after shutdown.
+Session tests cover reentrant down/up/cleanup, release failure recovery, a fresh
+click after return and all five buttons already held when the session starts.
+Cursor tests use an injected monotonic clock to check missing acknowledgements,
+expired tag rejection, new placement retries and 32-bit tag delivery. A real
+authenticated loopback peer stops reading to verify bounded outgoing queues.
+
+Run `dotnet run --project tests/Pairing.UiTests/Pairing.UiTests.csproj -c Release -- --native-robustness-only`
+on an interactive Windows desktop to minimize an owned MWB test window via the
+remote-input path, then check repeated handoffs and foreground focus while the
+main UI thread is blocked. The test intercepts input on a separate thread: its
+single injected click is allowed only on the owned test window, foreign pointer
+motion is suppressed for the short check, and cursor position is restored after
+cleanup. It cannot click a user's window. The standard UI suite also runs the
+blocked-UI lifecycle regression without moving/clicking the desktop pointer.
+
+Local verification passed: Release compilation with zero warnings/errors, all
+transport/backpressure, cursor, button, updater, keyboard and UI suites, plus
+the native receiver-minimize/focus regression. The native test was run with MWB
+and the PowerToys Mouse Without Borders module temporarily closed (with user
+approval) and restored afterward: their active global hooks had rejected the
+test's generated input. Running two mouse-sharing programs simultaneously can
+interfere with handoffs and input; use one during physical acceptance testing.
+
+Manual two-PC acceptance: minimize and restore MWB on both PCs while remotely
+controlling them; click and drag other windows, use tray/menu actions, repeat
+crossings in both directions and verify the foreground app does not change
+until clicked. Reconnect with a local button held, unplug/reconnect the network
+and confirm buttons/cursors recover. These hardware checks remain pending.
+
 ## Version 0.1.6 release verification (2026-10-24)
 
 The Windows x64 Release build passed locally with zero warnings and errors.

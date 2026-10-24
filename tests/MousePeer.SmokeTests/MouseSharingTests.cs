@@ -8,11 +8,16 @@ internal static class MouseSharingTests
     internal static void Run()
     {
         TestNoPhantomClicks();
+        TestReentrantButtonInjection();
+        TestButtonInjectionFailures();
         TestBothDirections(true);
         TestBothDirections(false);
         TestLocalTakeover();
         TestSimultaneousCrossings();
         TestHeldButtons();
+        TestButtonsHeldAtStartup();
+        TestFreshClickAfterReturn();
+        TestFailedReleaseKeepsOwnership();
         TestStalePackets();
         TestPointerRestoration();
         TestPointerInput();
@@ -40,6 +45,7 @@ internal static class MouseSharingTests
             if (hidden) MoveCursor(new Point(Bounds.Left + Bounds.Width / 2, Bounds.Top + Bounds.Height / 2));
         }
         internal readonly List<(uint flags, int data)> Injected = [];
+        internal Action<uint, int>? Injecting;
         public void MoveCursor(Point point)
         {
             if (!DelayPlacements) { Cursor = point; return; }
@@ -54,7 +60,11 @@ internal static class MouseSharingTests
             var placement = Placements[index];
             if (!Motion.SuppressInjectedMove(placement.input)) Cursor = placement.position;
         }
-        public void Inject(uint flags, int data) => Injected.Add((flags, data));
+        public void Inject(uint flags, int data)
+        {
+            Injecting?.Invoke(flags, data);
+            Injected.Add((flags, data));
+        }
     }
 
     private sealed class Pair : IDisposable
@@ -63,9 +73,11 @@ internal static class MouseSharingTests
         internal readonly MouseSharingSession[] Sessions;
         internal readonly Queue<(int from, MousePacket packet)> Packets = new();
         internal readonly List<(int from, MousePacket packet)> Sent = [];
+        private readonly Action<Win32Exception> _onInputError;
 
-        internal Pair(bool right = true)
+        internal Pair(bool right = true, Action<Win32Exception>? onInputError = null)
         {
+            _onInputError = onInputError ?? (ex => throw new Exception("Unexpected input error.", ex));
             Sessions = [Create(0, right), Create(1, right)];
             Sessions[0].Start();
             Sessions[1].Start();
@@ -77,7 +89,7 @@ internal static class MouseSharingTests
             Packets.Enqueue((side, packet));
             Sent.Add((side, packet));
             return true;
-        }, ex => throw new Exception("Unexpected input error.", ex), _ => { });
+        }, _onInputError, _ => { });
 
         internal void Flush()
         {
@@ -187,6 +199,139 @@ internal static class MouseSharingTests
                 "Combined thumb-button events did not work.");
             pair.Move(side, -direction * 100);
         }
+    }
+
+    private static void TestReentrantButtonInjection()
+    {
+        RemoteMouseButtons buttons = new();
+        List<(uint flags, int data)> events = [];
+        void Inject(uint flags, int data)
+        {
+            events.Add((flags, data));
+            buttons.Release(Inject, ex => throw ex);
+        }
+        buttons.Apply(NativeMouse.LEFTDOWN, 0, Inject);
+        buttons.Release(Inject, ex => throw ex);
+        Assert(events.SequenceEqual(new[] { (NativeMouse.LEFTDOWN, 0), (NativeMouse.LEFTUP, 0) }),
+            "Nested native input processing missed a down or duplicated a release.");
+
+        buttons = new();
+        events.Clear();
+        try { buttons.Apply(NativeMouse.LEFTDOWN, 0, (flags, data) =>
+        {
+            events.Add((flags, data));
+            buttons.Release((release, value) => events.Add((release, value)), ex => throw ex);
+            throw new Win32Exception(5);
+        }); }
+        catch (Win32Exception) { }
+        buttons.Release((flags, data) => events.Add((flags, data)), ex => throw ex);
+        Assert(events.Count == 2, "An outer injection failure undid a nested successful release.");
+
+        events.Clear();
+        buttons.Apply(NativeMouse.LEFTDOWN, 0, (flags, data) => events.Add((flags, data)));
+        try { buttons.Apply(NativeMouse.LEFTUP, 0, (flags, data) =>
+        {
+            events.Add((flags, data));
+            buttons.Apply(NativeMouse.LEFTDOWN, 0, (nested, value) => events.Add((nested, value)));
+            throw new Win32Exception(5);
+        }); }
+        catch (Win32Exception) { }
+        buttons.Release((flags, data) => events.Add((flags, data)), ex => throw ex);
+        Assert(events.Select(input => input.flags).SequenceEqual(new[] {
+            NativeMouse.LEFTDOWN, NativeMouse.LEFTUP, NativeMouse.LEFTDOWN, NativeMouse.LEFTUP }),
+            "An outer injection failure lost a nested replacement press.");
+    }
+
+    private static void TestButtonInjectionFailures()
+    {
+        RemoteMouseButtons buttons = new();
+        List<(uint flags, int data)> events = [];
+        int failures = 0;
+        try { buttons.Apply(NativeMouse.LEFTDOWN, 0, (_, _) => throw new Win32Exception(5)); }
+        catch (Win32Exception) { failures++; }
+        buttons.Release((flags, data) => events.Add((flags, data)), _ => failures++);
+        Assert(events.Count == 0 && failures == 1, "A rejected down was treated as a held button.");
+
+        buttons.Apply(NativeMouse.LEFTDOWN, 0, (flags, data) => events.Add((flags, data)));
+        buttons.Apply(NativeMouse.RIGHTDOWN, 0, (flags, data) => events.Add((flags, data)));
+        buttons.Release((flags, data) =>
+        {
+            if (flags == NativeMouse.LEFTUP) throw new Win32Exception(5);
+            events.Add((flags, data));
+        }, _ => failures++);
+        buttons.Release((flags, data) => events.Add((flags, data)), _ => failures++);
+        Assert(failures == 2 && events.SequenceEqual(new[] {
+            (NativeMouse.LEFTDOWN, 0), (NativeMouse.RIGHTDOWN, 0),
+            (NativeMouse.RIGHTUP, 0), (NativeMouse.LEFTUP, 0) }),
+            "A failed release prevented other cleanup or was not retried.");
+    }
+
+    private static void TestButtonsHeldAtStartup()
+    {
+        foreach (int held in Enumerable.Range(0, 5))
+        {
+            Desktop desktop = new();
+            using MouseSharingSession session = new(true, true, desktop, _ => true, ex => throw ex,
+                _ => { }, [held]);
+            session.Start();
+            Point edge = new(desktop.Bounds.Right - 1, 300);
+            Assert(!session.PhysicalMove(new Point(edge.X - 1, edge.Y), edge) && !session.IsRemote,
+                "A button held before startup allowed a local drag to cross PCs.");
+            uint up = held switch {
+                0 => NativeMouse.LEFTUP, 1 => NativeMouse.RIGHTUP, 2 => NativeMouse.MIDDLEUP,
+                _ => NativeMouse.XUP
+            };
+            int data = held >= 3 ? held - 2 : 0;
+            Assert(!session.PhysicalButton(up, data), "The original local drag release was swallowed.");
+            Assert(session.PhysicalMove(edge, edge) && session.IsRemote,
+                "Releasing a button held at startup did not allow crossing again.");
+        }
+    }
+
+    private static void TestFreshClickAfterReturn()
+    {
+        using Pair pair = new();
+        pair.Cross(0);
+        pair.Button(0, NativeMouse.LEFTDOWN);
+        pair.Move(0, -100);
+        Assert(!pair.Sessions[0].PhysicalButton(NativeMouse.LEFTDOWN, 0) &&
+            !pair.Sessions[0].PhysicalButton(NativeMouse.LEFTUP, 0),
+            "An old suppressed release swallowed the up belonging to a fresh local click.");
+    }
+
+    private static void TestFailedReleaseKeepsOwnership()
+    {
+        int errors = 0;
+        using Pair pair = new(onInputError: _ => errors++);
+        pair.Cross(0);
+        pair.Button(0, NativeMouse.LEFTDOWN);
+        pair.Desktops[1].Injecting = (flags, _) =>
+        {
+            if (flags == NativeMouse.LEFTUP) throw new Win32Exception(5);
+        };
+        bool failed = false;
+        try { pair.Move(0, -100); }
+        catch (Win32Exception) { failed = true; }
+        Assert(failed && errors == 1 && pair.Sessions[0].IsRemote && pair.Sessions[1].IsReceiving &&
+            !pair.Desktops[1].PointerHidden,
+            "A failed button release silently handed off ownership with a drag still pressed.");
+        pair.Desktops[1].Injecting = null;
+        pair.Sessions[1].Dispose();
+        Assert(pair.Desktops[1].Injected.TakeLast(1).Single() == (NativeMouse.LEFTUP, 0),
+            "Session teardown did not retry a failed release.");
+
+        Desktop desktop = new();
+        MouseSharingSession session = new(false, false, desktop, _ => true, _ => { }, _ => { });
+        session.Start();
+        session.Receive(new MousePacket("layout", Data: 1));
+        session.Receive(new MousePacket("enter", Data: 1, Transfer: 1));
+        session.Receive(new MousePacket("button", Flags: NativeMouse.LEFTDOWN, Transfer: 1));
+        desktop.PointerHidden = true;
+        desktop.Injecting = (_, _) => throw new Win32Exception(5);
+        try { session.Dispose(); }
+        catch (Win32Exception) { }
+        Assert(!desktop.PointerHidden && !session.IsReceiving && !session.IsRemote,
+            "Cleanup failure left the cursor hidden or the session active.");
     }
 
     private static void TestLocalTakeover()

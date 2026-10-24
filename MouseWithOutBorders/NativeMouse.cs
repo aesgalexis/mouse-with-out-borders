@@ -102,6 +102,15 @@ internal static class NativeMouse
     [DllImport("user32.dll")]
     internal static extern bool GetCursorPos(out Point point);
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
+
+    internal static IReadOnlyCollection<int> GetHeldButtons()
+    {
+        int[] keys = [0x01, 0x02, 0x04, 0x05, 0x06];
+        return Enumerable.Range(0, keys.Length).Where(index => (GetAsyncKeyState(keys[index]) & 0x8000) != 0).ToArray();
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint count, [In] Input[] input, int size);
 

@@ -17,6 +17,8 @@ internal interface IMouseDesktop
 internal sealed class RemoteMouseButtons
 {
     private readonly HashSet<int> _held = [];
+    private readonly long[] _revisions = new long[5];
+    private bool _releasing;
     private static readonly (uint down, uint up, int data)[] Buttons = [
         (NativeMouse.LEFTDOWN, NativeMouse.LEFTUP, 0),
         (NativeMouse.RIGHTDOWN, NativeMouse.RIGHTUP, 0),
@@ -50,29 +52,45 @@ internal sealed class RemoteMouseButtons
         }
         int button = Identify(flags, data, out bool down);
         if (button < 0 || _held.Contains(button) == down) return;
-        inject(flags, data);
+        // SendInput can pump a nested hook/message loop. Reserve the state first
+        // so a nested cleanup sees this down and cannot release the same up twice.
+        long revision = ++_revisions[button];
         if (down) _held.Add(button);
         else _held.Remove(button);
+        try { inject(flags, data); }
+        catch
+        {
+            // A nested transition may already have released or replaced this
+            // input. Only undo our reservation if it is still the latest one.
+            if (_revisions[button] == revision)
+            {
+                if (down) _held.Remove(button);
+                else _held.Add(button);
+            }
+            throw;
+        }
     }
 
     internal void Release(Action<uint, int> inject, Action<Win32Exception> onError)
     {
-        foreach (int button in _held.Order().ToArray())
+        if (_releasing) return;
+        _releasing = true;
+        try
         {
-            var release = Buttons[button];
-            try
+            foreach (int button in _held.Order().ToArray())
             {
-                inject(release.up, release.data);
-                _held.Remove(button);
+                var release = Buttons[button];
+                try { Apply(release.up, release.data, inject); }
+                catch (Win32Exception ex) { onError(ex); }
             }
-            catch (Win32Exception ex) { onError(ex); }
         }
+        finally { _releasing = false; }
     }
 }
 
 /// <summary>
 /// A symmetric session: the connection role only chooses who sends the layout.
-/// Input and ownership changes run on the UI thread on both PCs.
+/// Input and ownership changes run on one input thread on each PC.
 /// </summary>
 internal sealed class MouseSharingSession : IDisposable
 {
@@ -99,7 +117,8 @@ internal sealed class MouseSharingSession : IDisposable
     internal bool IsReceiving => _location == MouseLocation.Receiving;
 
     internal MouseSharingSession(bool initiator, bool exitRight, IMouseDesktop desktop,
-        Func<MousePacket, bool> send, Action<Win32Exception> onInputError, Action<string> status)
+        Func<MousePacket, bool> send, Action<Win32Exception> onInputError, Action<string> status,
+        IReadOnlyCollection<int>? initialPhysicalButtons = null)
     {
         _side = initiator ? 0 : 1;
         Ready = initiator;
@@ -108,6 +127,7 @@ internal sealed class MouseSharingSession : IDisposable
         _send = send;
         _onInputError = onInputError;
         _status = status;
+        if (initialPhysicalButtons is not null) _physicalButtons.UnionWith(initialPhysicalButtons);
     }
 
     internal void Start()
@@ -131,7 +151,19 @@ internal sealed class MouseSharingSession : IDisposable
         ? "Connected. Any mouse or touchpad on either PC can cross the shared edge."
         : "Connected. Waiting for the other PC's screen layout...");
 
-    private void ReleaseInjected() => _injectedButtons.Release(_desktop.Inject, _onInputError);
+    private void ReleaseInjected()
+    {
+        Win32Exception? failure = null;
+        _injectedButtons.Release(_desktop.Inject, ex =>
+        {
+            failure ??= ex;
+            _onInputError(ex);
+        });
+        // Keep ownership unchanged if Windows did not release a held button.
+        // The host tears down the peer and retries cleanup instead of silently
+        // leaving a drag pressed while continuing in another input ownership.
+        if (failure is not null) throw failure;
+    }
 
     private void RestoreLocal(double ratio)
     {
@@ -200,7 +232,13 @@ internal sealed class MouseSharingSession : IDisposable
         }
         int button = RemoteMouseButtons.Identify(flags, data, out bool down);
         if (button < 0) return IsRemote;
-        if (down) _physicalButtons.Add(button);
+        if (down)
+        {
+            _physicalButtons.Add(button);
+            // A fresh down starts a new local click even if an old forwarded
+            // press never produced its expected physical release.
+            _suppressRelease.Remove(button);
+        }
         else _physicalButtons.Remove(button);
         if (!Ready) return false;
         if (!IsRemote) _desktop.SetPointerHidden(false);
@@ -304,9 +342,15 @@ internal sealed class MouseSharingSession : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        ReleaseInjected();
-        if (IsRemote) RestoreLocal(0.5);
-        _desktop.SetPointerHidden(false);
-        _location = MouseLocation.Local;
+        try { ReleaseInjected(); }
+        finally
+        {
+            try { if (IsRemote) RestoreLocal(0.5); }
+            finally
+            {
+                try { _desktop.SetPointerHidden(false); }
+                finally { _location = MouseLocation.Local; }
+            }
+        }
     }
 }
